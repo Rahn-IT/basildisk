@@ -1,0 +1,53 @@
+{% extends "base" %}
+
+{% block content %}
+    <h1>Disks</h1>
+
+    {% if flash %}
+        <div class="card field-{{flash.0}}-msg">
+            {{ flash.1 }}
+        </div>
+    {% endif %}
+
+    {% for disk in disks %}
+    <div class="card">
+        <h2>{{ disk.model }}</h2>
+        <div class="flex flex-start">
+            {% if disk.disk_type == "NVMe" %}
+                <img src="/static/images/nvme.svg"> 
+            {% elif disk.disk_type == "SSD" %}
+                <img src="/static/images/ssd.svg">
+            {% elif disk.disk_type == "USB" %}
+                <img src="/static/images/usb.svg">
+            {% else %}
+                <img src="/static/images/hdd.svg">
+            {% endif %}
+            <div class="flex flex-col">
+                <table class="grow">
+                    <tr>
+                        <th>Serial</th>
+                        <td>{{ disk.serial }}</td>
+                    </tr>
+                    <tr>
+                        <th>Device</th>
+                        <td>{{ disk.device }}</td>
+                    </tr>
+                    <tr>
+                        <th>Size</th>
+                        <td>{{ disk.size }}</td>
+                    </tr>
+                    <tr>
+                        <th>Removable</th>
+                        <td>{% if disk.removable %}✅{% else %}❌{% endif %}</td>
+                    </tr>
+
+                </table>
+                <div class="flex">
+                    <a href="/smart/{{ disk.device }}" class="btn">View SMART</a>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+
+{% endblock content %}
