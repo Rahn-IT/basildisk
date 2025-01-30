@@ -5,8 +5,9 @@ use thiserror::Error;
 
 #[derive(Serialize, Deserialize)]
 pub struct SmartCtl {
-    pub device: Device,
+    pub device: Option<Device>,
     pub model_name: Option<String>,
+    pub model_family: Option<String>,
     pub serial_number: Option<String>,
     pub firmware_version: Option<String>,
     pub nvme_smart_health_information_log: Option<NvmeHealthInformation>,
@@ -56,7 +57,7 @@ impl SmartCtl {
             .arg("-a")
             .arg("-j")
             .arg("-T")
-            .arg("permissive")
+            .arg("verypermissive")
             .arg(format!("/dev/{}", device))
             .output()
             .await?;

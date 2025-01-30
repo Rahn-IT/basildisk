@@ -24,6 +24,12 @@
             {% endif %}
             <div class="flex flex-col">
                 <table class="grow">
+                    {% if disk.model_exact %}
+                    <tr>
+                        <th>Model</th>
+                        <td>{{ disk.model_exact }}</td>
+                    </tr>
+                    {% endif %}
                     <tr>
                         <th>Serial</th>
                         <td>{{ disk.serial }}</td>

@@ -12,6 +12,7 @@ use crate::{
 #[derive(Serialize)]
 pub struct Disk {
     model: String,
+    model_exact: Option<String>,
     serial: Option<String>,
     size_formated: String,
     device: String,
@@ -55,43 +56,55 @@ impl Disk {
         for disk in &lsblk {
             let device = disk.name.clone();
 
-            joinset.spawn(async move { SmartCtl::get(&device).await });
+            joinset.spawn(async move { (SmartCtl::get(&device).await, device) });
         }
 
         let mut smartctl = HashMap::new();
 
         while let Some(result) = joinset.join_next().await {
-            let smart_data = result??;
+            let (smart_result, device) = result?;
+            let smart_data = smart_result?;
 
-            // Smartctl outputs the path, not just the device name, so we just truncate the /dev/
-            let device = &smart_data.device.name[5..];
-
-            smartctl.insert(device.to_string(), smart_data);
+            smartctl.insert(device, smart_data);
         }
 
         let disks = lsblk
             .into_iter()
             .map(|lsblk_info| {
                 if let Some(smart) = smartctl.remove(&lsblk_info.name) {
-                    let model = if let Some(vendor) = &lsblk_info.vendor {
-                        if let Some(model) = &lsblk_info.model {
-                            format!("{}: {}", vendor.trim(), model.trim())
-                        } else {
-                            format!("{}: unknown disk model", vendor.trim())
-                        }
-                    } else if let Some(model) = &lsblk_info.model {
-                        model.trim().to_string()
-                    } else {
-                        "unknown disk model".to_string()
-                    };
+                    let model_exact: Option<String> = smart.model_name;
+                    let model_family: Option<String> = smart.model_family;
 
-                    let connection_type = match smart.device.protocol.as_str() {
-                        "SCSI" => ConnectionType::SCSI,
-                        _ => ConnectionType::Unknown,
-                    };
+                    let mut model_display = model_family
+                        .unwrap_or_else(|| {
+                            model_exact.clone().unwrap_or_else(|| {
+                                lsblk_info
+                                    .model
+                                    .clone()
+                                    .unwrap_or_else(|| "Unknown Disk Model".to_string())
+                            })
+                        })
+                        .trim()
+                        .to_string();
+
+                    // Samsung just writes junk into the model family :(
+                    if model_display.contains("Samsung based") {
+                        model_display = lsblk_info.model.unwrap_or_default()
+                    }
+
+                    let mut connection_type = ConnectionType::Unknown;
+
+                    if let Some(device) = &smart.device {
+                        connection_type = match device.protocol.as_str() {
+                            "SCSI" => ConnectionType::SCSI,
+                            "ATA" => ConnectionType::SATA,
+                            _ => ConnectionType::Unknown,
+                        }
+                    }
 
                     Disk {
-                        model,
+                        model: model_display,
+                        model_exact,
                         serial: lsblk_info.serial,
                         size_formated: Self::format_size(lsblk_info.size),
                         device: lsblk_info.name,
@@ -109,12 +122,12 @@ impl Disk {
     }
 
     fn format_size(size: u64) -> String {
-        let mut size_formatted = if size > 1000_000_000_000 {
-            format!("{} TB", size / 1000_000_000_000)
-        } else if size > 1000_000_000 {
-            format!("{} GB", size / 1000_000_000)
-        } else if size > 1000_000 {
-            format!("{} MB", size / 1000_000)
+        let mut size_formatted = if size > 1_000_000_000_000 {
+            format!("{} TB", size / 1_000_000_000_000)
+        } else if size > 1_000_000_000 {
+            format!("{} GB", size / 1_000_000_000)
+        } else if size > 1_000_000 {
+            format!("{} MB", size / 1_000_000)
         } else if size > 1000 {
             format!("{} KB", size / 1000)
         } else {
