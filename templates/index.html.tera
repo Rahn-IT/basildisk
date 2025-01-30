@@ -15,10 +15,10 @@
         <div class="flex flex-start">
             {% if disk.connection_type == "NVMe" %}
                 <img src="/static/images/nvme.svg"> 
+            {% elif disk.connection_type == "USB" %}
+                <img src="/static/images/usb.svg">
             {% elif disk.disk_type == "SSD" %}
                 <img src="/static/images/ssd.svg">
-            {% elif disk.disk_type == "USB" %}
-                <img src="/static/images/usb.svg">
             {% else %}
                 <img src="/static/images/hdd.svg">
             {% endif %}
@@ -41,6 +41,10 @@
                     <tr>
                         <th>Size</th>
                         <td>{{ disk.size_formated }}</td>
+                    </tr>
+                    <tr>
+                        <th>Connection Type</th>
+                        <td>{{ disk.connection_type }}
                     </tr>
                     <tr>
                         <th>Removable</th>

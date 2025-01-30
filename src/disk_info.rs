@@ -25,8 +25,6 @@ pub struct Disk {
 pub enum DiskType {
     SSD,
     HDD,
-    USB,
-    Virtual,
 }
 
 #[derive(Serialize)]
@@ -34,6 +32,7 @@ pub enum ConnectionType {
     SATA,
     SCSI,
     NVMe,
+    USB,
     Unknown,
 }
 
@@ -92,15 +91,21 @@ impl Disk {
                         model_display = lsblk_info.model.unwrap_or_default()
                     }
 
-                    let mut connection_type = ConnectionType::Unknown;
-
-                    if let Some(device) = &smart.device {
-                        connection_type = match device.protocol.as_str() {
-                            "SCSI" => ConnectionType::SCSI,
-                            "ATA" => ConnectionType::SATA,
+                    let connection_type = if let Some(tran) = lsblk_info.tran {
+                        match tran.as_str() {
+                            "sata" => ConnectionType::SATA,
+                            "usb" => ConnectionType::USB,
                             _ => ConnectionType::Unknown,
                         }
-                    }
+                    } else {
+                        ConnectionType::Unknown
+                    };
+
+                    let disk_type = if lsblk_info.rota {
+                        DiskType::HDD
+                    } else {
+                        DiskType::SSD
+                    };
 
                     Disk {
                         model: model_display,
@@ -110,7 +115,7 @@ impl Disk {
                         device: lsblk_info.name,
                         removable: lsblk_info.hotplug,
                         connection_type,
-                        disk_type: DiskType::HDD,
+                        disk_type,
                     }
                 } else {
                     panic!("dammit");
