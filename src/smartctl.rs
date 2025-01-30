@@ -5,40 +5,41 @@ use thiserror::Error;
 
 #[derive(Serialize, Deserialize)]
 pub struct SmartCtl {
-    device: Device,
-    model_name: String,
-    serial_number: String,
-    firmware_version: String,
-    nvme_smart_health_information_log: HealthInformation,
+    pub device: Device,
+    pub model_name: Option<String>,
+    pub serial_number: Option<String>,
+    pub firmware_version: Option<String>,
+    pub nvme_smart_health_information_log: Option<NvmeHealthInformation>,
 }
 
 #[derive(Serialize, Deserialize)]
 pub struct Device {
     #[serde(rename = "type")]
-    _type: String,
-    protocol: String,
+    pub _type: String,
+    pub protocol: String,
+    pub name: String,
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct HealthInformation {
-    critical_warning: u64,
-    temperature: u64,
-    available_spare: u64,
-    available_spare_threshold: u64,
-    percentage_used: u64,
-    data_units_read: u64,
-    data_units_written: u64,
-    host_reads: u64,
-    host_writes: u64,
-    controller_busy_time: u64,
-    power_cycles: u64,
-    power_on_hours: u64,
-    unsafe_shutdowns: u64,
-    media_errors: u64,
-    num_err_log_entries: u64,
-    warning_temp_time: u64,
-    critical_comp_time: u64,
-    temperature_sensors: Vec<u64>,
+pub struct NvmeHealthInformation {
+    pub critical_warning: u64,
+    pub temperature: u64,
+    pub available_spare: u64,
+    pub available_spare_threshold: u64,
+    pub percentage_used: u64,
+    pub data_units_read: u64,
+    pub data_units_written: u64,
+    pub host_reads: u64,
+    pub host_writes: u64,
+    pub controller_busy_time: u64,
+    pub power_cycles: u64,
+    pub power_on_hours: u64,
+    pub unsafe_shutdowns: u64,
+    pub media_errors: u64,
+    pub num_err_log_entries: u64,
+    pub warning_temp_time: u64,
+    pub critical_comp_time: u64,
+    pub temperature_sensors: Vec<u64>,
 }
 
 #[derive(Debug, Error)]
@@ -54,18 +55,13 @@ impl SmartCtl {
         let output = tokio::process::Command::new("smartctl")
             .arg("-a")
             .arg("-j")
+            .arg("-T")
+            .arg("permissive")
             .arg(format!("/dev/{}", device))
             .output()
             .await?;
 
         println!("{}", String::from_utf8_lossy(&output.stdout));
-
-        if !output.status.success() {
-            return Err(SmartCtlError::Io(std::io::Error::new(
-                std::io::ErrorKind::Other,
-                "smartctl failed",
-            )));
-        }
 
         Ok(serde_json::from_slice(&output.stdout)?)
     }

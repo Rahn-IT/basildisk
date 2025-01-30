@@ -1,20 +1,12 @@
-use std::collections::{BTreeMap, HashMap};
-
-use lsblk::{Disk, IndexDisk, LsBlk};
-use rocket::{
-    fairing::AdHoc,
-    fs::FileServer,
-    request::FlashMessage,
-    response::{Flash, Redirect},
-    serde::Serialize,
-    Build, Rocket, State,
-};
+use disk_info::Disk;
+use rocket::{fs::FileServer, request::FlashMessage, serde::Serialize};
 use rocket_dyn_templates::Template;
 use smartctl::SmartCtl;
 
 #[macro_use]
 extern crate rocket;
 
+mod disk_info;
 mod lsblk;
 mod smartctl;
 
@@ -29,20 +21,20 @@ async fn rocket() -> _ {
 #[derive(Serialize)]
 pub struct Index {
     flash: Option<(String, String)>,
-    disks: Vec<IndexDisk>,
+    disks: Vec<Disk>,
 }
 
 #[get("/")]
 async fn index(flash: Option<FlashMessage<'_>>) -> Template {
-    let disks = LsBlk::list().await;
+    let disks = Disk::list().await;
 
     let index = match disks {
         Ok(disks) => Index {
             flash: flash.map(FlashMessage::into_inner),
-            disks: disks.iter().map(Disk::format).collect(),
+            disks,
         },
-        Err(_err) => Index {
-            flash: Some(("error".into(), "Error listing disks".to_string())),
+        Err(err) => Index {
+            flash: Some(("error".into(), format!("Error listing disks: {}", err))),
             disks: Vec::new(),
         },
     };
