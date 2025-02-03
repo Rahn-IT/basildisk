@@ -87,7 +87,7 @@ impl Disk {
                         .to_string();
 
                     // Samsung just writes junk into the model family :(
-                    if model_display.contains("Samsung based") {
+                    if model_display.contains("based") {
                         model_display = lsblk_info.model.unwrap_or_default()
                     }
 

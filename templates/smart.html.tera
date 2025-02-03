@@ -27,7 +27,9 @@
                     <th>Firmware Version</th>
                     <td>{{ smart.firmware_version }}</td>
                 </tr>
+                {% if smart.nvme_smart_health_information_log %}
                 {% set data = smart.nvme_smart_health_information_log %}
+
                 <tr>
                     <th>Critical Errors</th>
                     <td>{{ data.critical_warning }}</td>
@@ -107,6 +109,7 @@
                         <td>{{ temp }} C</td>
                     </tr>
                 {% endfor %}
+                {% endif %}
                 
             </table>
         </div>
