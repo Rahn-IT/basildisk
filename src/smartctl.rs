@@ -62,7 +62,7 @@ pub struct AtaAttribute {
 
 #[derive(Serialize, Deserialize)]
 pub struct RawValue {
-    value: u32,
+    value: u64,
     string: String,
 }
 
