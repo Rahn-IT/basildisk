@@ -57,6 +57,13 @@ pub struct AtaAttribute {
     value: u8,
     worst: u8,
     thresh: u8,
+    raw: RawValue,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct RawValue {
+    value: u32,
+    string: String,
 }
 
 #[derive(Debug, Error)]

@@ -18,119 +18,123 @@
             {% else %}
                 <img src="/static/images/hdd.svg">
             {% endif %}
-            <table class="grow">
-                <tr>
-                    <th>Serial Number</th>
-                    <td>{{ smart.serial_number }}</td>
-                </tr>
-                <tr>
-                    <th>Firmware Version</th>
-                    <td>{{ smart.firmware_version }}</td>
-                </tr>
-                {% if smart.nvme_smart_health_information_log %}
-                {% set data = smart.nvme_smart_health_information_log %}
-
-                <tr>
-                    <th>Critical Errors</th>
-                    <td>{{ data.critical_warning }}</td>
-                </tr>
-                <tr>
-                    <th>Temperature</th>
-                    <td>{{ data.temperature }} C</td>
-                </tr>
-                <tr>
-                    <th>Available Spare</th>
-                    <td>{{ data.available_spare }} %</td>
-                </tr>
-                <tr>
-                    <th>Available Spare Threshold</th>
-                    <td>{{ data.available_spare_threshold }} %</td>
-                </tr>
-                <tr>
-                    <th>Percentage Used</th>
-                    <td>{{ data.percentage_used }} %</td>
-                </tr>
-                <tr>
-                    <th>Data Units Read</th>
-                    <td>{{ data.data_units_read }} MB</td>
-                </tr>
-                <tr>
-                    <th>Data Units Written</th>
-                    <td>{{ data.data_units_written }} MB</td>
-                </tr>
-                <tr>
-                    <th>Host Reads</th>
-                    <td>{{ data.host_reads }} MB</td>
-                </tr>
-                <tr>
-                    <th>Host Writes</th>
-                    <td>{{ data.host_writes }} MB</td>
-                </tr>
-                <tr>
-                    <th>Controller Busy Time</th>
-                    <td>{{ data.controller_busy_time }} ms</td>
-                </tr>
-                <tr>
-                    <th>Power On Hours</th>
-                    <td>{{ data.power_on_hours }} hours</td>
-                </tr>
-                <tr>
-                    <th>Power Cycles</th>
-                    <td>{{ data.power_cycles }}</td>
-                </tr>
-                <tr>
-                    <th>Power On Hours</th>
-                    <td>{{ data.power_on_hours }}</td>
-                </tr>
-                <tr>
-                    <th>Unsafe Shutdowns</th>
-                    <td>{{ data.unsafe_shutdowns }}</td>
-                </tr>
-                <tr>
-                    <th>Media Errors</th>
-                    <td>{{ data.media_errors }}</td>
-                </tr>
-                <tr>
-                    <th>Number of Error Log Entries</th>
-                    <td>{{ data.num_err_log_entries }}</td>
-                </tr>
-                <tr>
-                    <th>Warning Temp Time</th>
-                    <td>{{ data.warning_temp_time }} hours</td>
-                </tr>
-                <tr>
-                    <th>Critical Comp Time</th>
-                    <td>{{ data.critical_comp_time }} hours</td>
-                </tr>
-
-                {% for temp in data.temperature_sensors %}
+            <div class="grow flex flex-col">
+                <table class="grow">
                     <tr>
-                        <th>Temperature Sensor {{ loop.index }}</th>
-                        <td>{{ temp }} C</td>
+                        <th>Serial Number</th>
+                        <td>{{ smart.serial_number }}</td>
                     </tr>
-                {% endfor %}
-                {% endif %}
-                
-            </table>
+                    <tr>
+                        <th>Firmware Version</th>
+                        <td>{{ smart.firmware_version }}</td>
+                    </tr>
+                    {% if smart.nvme_smart_health_information_log %}
+                    {% set data = smart.nvme_smart_health_information_log %}
 
-            {% if smart.ata_smart_attributes %}
-            <table class="grow">
-                <tr>
-                    <th>Name</th>
-                    <th>Value</th>
-                    <th>Worst Value</th>
-                    <th>Threshhold</th>
-                </tr>
-                {% for attribute in smart.ata_smart_attributes.table %}
-                <tr>
-                    <td>{{ attribute.name | replace(from="_", to=" ") }}</td>
-                    <td>{{ attribute.value }}</td>
-                    <td>{{ attribute.worst }}</td>
-                    <td>{{ attribute.thresh }}</td>
-                </tr>
-                {% endfor %}
-            </table>
-            {% endif %}
+                    <tr>
+                        <th>Critical Errors</th>
+                        <td>{{ data.critical_warning }}</td>
+                    </tr>
+                    <tr>
+                        <th>Temperature</th>
+                        <td>{{ data.temperature }} C</td>
+                    </tr>
+                    <tr>
+                        <th>Available Spare</th>
+                        <td>{{ data.available_spare }} %</td>
+                    </tr>
+                    <tr>
+                        <th>Available Spare Threshold</th>
+                        <td>{{ data.available_spare_threshold }} %</td>
+                    </tr>
+                    <tr>
+                        <th>Percentage Used</th>
+                        <td>{{ data.percentage_used }} %</td>
+                    </tr>
+                    <tr>
+                        <th>Data Units Read</th>
+                        <td>{{ data.data_units_read }} MB</td>
+                    </tr>
+                    <tr>
+                        <th>Data Units Written</th>
+                        <td>{{ data.data_units_written }} MB</td>
+                    </tr>
+                    <tr>
+                        <th>Host Reads</th>
+                        <td>{{ data.host_reads }} MB</td>
+                    </tr>
+                    <tr>
+                        <th>Host Writes</th>
+                        <td>{{ data.host_writes }} MB</td>
+                    </tr>
+                    <tr>
+                        <th>Controller Busy Time</th>
+                        <td>{{ data.controller_busy_time }} ms</td>
+                    </tr>
+                    <tr>
+                        <th>Power On Hours</th>
+                        <td>{{ data.power_on_hours }} hours</td>
+                    </tr>
+                    <tr>
+                        <th>Power Cycles</th>
+                        <td>{{ data.power_cycles }}</td>
+                    </tr>
+                    <tr>
+                        <th>Power On Hours</th>
+                        <td>{{ data.power_on_hours }}</td>
+                    </tr>
+                    <tr>
+                        <th>Unsafe Shutdowns</th>
+                        <td>{{ data.unsafe_shutdowns }}</td>
+                    </tr>
+                    <tr>
+                        <th>Media Errors</th>
+                        <td>{{ data.media_errors }}</td>
+                    </tr>
+                    <tr>
+                        <th>Number of Error Log Entries</th>
+                        <td>{{ data.num_err_log_entries }}</td>
+                    </tr>
+                    <tr>
+                        <th>Warning Temp Time</th>
+                        <td>{{ data.warning_temp_time }} hours</td>
+                    </tr>
+                    <tr>
+                        <th>Critical Comp Time</th>
+                        <td>{{ data.critical_comp_time }} hours</td>
+                    </tr>
+
+                    {% for temp in data.temperature_sensors %}
+                        <tr>
+                            <th>Temperature Sensor {{ loop.index }}</th>
+                            <td>{{ temp }} C</td>
+                        </tr>
+                    {% endfor %}
+                    {% endif %}
+                    
+                </table>
+
+                {% if smart.ata_smart_attributes %}
+                <table class="grow">
+                    <tr>
+                        <th>Name</th>
+                        <th>Value</th>
+                        <th>Worst Value</th>
+                        <th>Threshhold</th>
+                        <th>Raw</th>
+                    </tr>
+                    {% for attribute in smart.ata_smart_attributes.table %}
+                    <tr>
+                        <td>{{ attribute.name | replace(from="_", to=" ") }}</td>
+                        <td>{{ attribute.value }}</td>
+                        <td>{{ attribute.worst }}</td>
+                        <td>{{ attribute.thresh }}</td>
+                        <td>{{ attribute.raw.string }}</td>
+                    </tr>
+                    {% endfor %}
+                </table>
+                {% endif %}
+            </div>
         </div>
     </div>
     {% endif %}
