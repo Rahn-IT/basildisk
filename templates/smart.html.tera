@@ -112,6 +112,25 @@
                 {% endif %}
                 
             </table>
+
+            {% if smart.ata_smart_attributes %}
+            <table class="grow">
+                <tr>
+                    <th>Name</th>
+                    <th>Value</th>
+                    <th>Worst Value</th>
+                    <th>Threshhold</th>
+                </tr>
+                {% for attribute in smart.ata_smart_attributes.table %}
+                <tr>
+                    <td>{{ attribute.name | replace(from="_", to=" ") }}</td>
+                    <td>{{ attribute.value }}</td>
+                    <td>{{ attribute.worst }}</td>
+                    <td>{{ attribute.thresh }}</td>
+                </tr>
+                {% endfor %}
+            </table>
+            {% endif %}
         </div>
     </div>
     {% endif %}

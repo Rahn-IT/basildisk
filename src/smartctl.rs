@@ -11,6 +11,7 @@ pub struct SmartCtl {
     pub serial_number: Option<String>,
     pub firmware_version: Option<String>,
     pub nvme_smart_health_information_log: Option<NvmeHealthInformation>,
+    pub ata_smart_attributes: Option<AtaSmartAttributes>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -41,6 +42,21 @@ pub struct NvmeHealthInformation {
     pub warning_temp_time: u64,
     pub critical_comp_time: u64,
     pub temperature_sensors: Vec<u64>,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct AtaSmartAttributes {
+    pub revision: u8,
+    pub table: Vec<AtaAttribute>,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct AtaAttribute {
+    id: u16,
+    name: String,
+    value: u8,
+    worst: u8,
+    thresh: u8,
 }
 
 #[derive(Debug, Error)]
