@@ -1,7 +1,7 @@
 {% extends "base" %}
 
 {% block content %}
-    <h1>Disks</h1>
+    <h1>S.M.A.R.T. Data</h1>
 
     {% if flash %}
         <div class="card field-{{flash.0}}-msg">
