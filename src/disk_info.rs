@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, fmt::Display};
 
 use serde::Serialize;
 use thiserror::Error;
@@ -25,17 +25,38 @@ pub struct Disk {
 
 #[derive(Serialize, PartialEq, Eq, Clone, Copy)]
 pub enum DiskType {
-    SSD,
-    HDD,
+    Ssd,
+    Hdd,
+}
+
+impl Display for DiskType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Hdd => write!(f, "HDD"),
+            Self::Ssd => write!(f, "SSD"),
+        }
+    }
 }
 
 #[derive(Serialize, Clone, Copy)]
 pub enum ConnectionType {
-    SATA,
-    SCSI,
-    NVMe,
-    USB,
+    Sata,
+    Scsi,
+    Nvme,
+    Usb,
     Unknown,
+}
+
+impl Display for ConnectionType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ConnectionType::Sata => write!(f, "Serial ATA"),
+            ConnectionType::Scsi => write!(f, "SCSI"),
+            ConnectionType::Nvme => write!(f, "NVMe"),
+            ConnectionType::Usb => write!(f, "USB"),
+            ConnectionType::Unknown => write!(f, "Unknown"),
+        }
+    }
 }
 
 #[derive(Debug, Error)]
@@ -97,8 +118,8 @@ impl Disk {
 
                 let connection_type = if let Some(tran) = lsblk_info.tran {
                     match tran.as_str() {
-                        "sata" => ConnectionType::SATA,
-                        "usb" => ConnectionType::USB,
+                        "sata" => ConnectionType::Sata,
+                        "usb" => ConnectionType::Usb,
                         _ => ConnectionType::Unknown,
                     }
                 } else {
@@ -106,9 +127,9 @@ impl Disk {
                 };
 
                 let disk_type = if lsblk_info.rota {
-                    DiskType::HDD
+                    DiskType::Hdd
                 } else {
-                    DiskType::SSD
+                    DiskType::Ssd
                 };
 
                 let erase_type =

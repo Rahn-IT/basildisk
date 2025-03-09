@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use disk_info::Disk;
 use jobs::{JobInfo, JobManager};
 use rocket::{fs::FileServer, request::FlashMessage, serde::Serialize, State};
@@ -19,7 +21,7 @@ async fn rocket() -> _ {
         .mount("/", routes![index, smart, job_list])
         .mount("/static", FileServer::from("templates/static"))
         .attach(Template::fairing())
-        .manage(JobManager::new())
+        .manage(Arc::new(JobManager::new()))
 }
 
 #[derive(Serialize)]
@@ -76,7 +78,7 @@ struct Jobs {
 }
 
 #[get("/jobs")]
-async fn job_list(manager: &State<JobManager>) -> Template {
+async fn job_list(manager: &State<Arc<JobManager>>) -> Template {
     let jobs = Jobs {
         running_jobs: manager.list_running_jobs().await,
     };

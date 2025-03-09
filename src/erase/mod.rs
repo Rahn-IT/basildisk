@@ -1,8 +1,14 @@
+use std::fmt::Display;
+
 use hdparm::{Hdparm, HdparmError};
 use serde::Serialize;
 use thiserror::Error;
+use tokio::sync::broadcast;
 
-use crate::disk_info::{ConnectionType, Disk, DiskType};
+use crate::{
+    disk_info::{ConnectionType, Disk, DiskType},
+    jobs::Job,
+};
 
 mod hdparm;
 
@@ -14,12 +20,21 @@ pub enum EraseType {
     AtaEnhancedSecureErase,
 }
 
+impl Display for EraseType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            EraseType::None => unimplemented!(),
+            EraseType::BlockOverride => write!(f, "Block Override"),
+            EraseType::AtaSecureErase => write!(f, "ATA Secure Erase"),
+            EraseType::AtaEnhancedSecureErase => write!(f, "ATA Enhanced Secure Erase"),
+        }
+    }
+}
+
 #[derive(Debug, Error)]
 pub enum GetEraseTypeError {
     #[error("error during hdparm: {0}")]
     Hdparm(#[from] HdparmError),
-    #[error("Not implemented yet")]
-    Todo,
 }
 
 impl EraseType {
@@ -29,8 +44,8 @@ impl EraseType {
         disk_type: DiskType,
     ) -> Result<Self, GetEraseTypeError> {
         match connection_type {
-            ConnectionType::SATA => {
-                if disk_type != DiskType::SSD {
+            ConnectionType::Sata => {
+                if disk_type != DiskType::Ssd {
                     return Ok(EraseType::None);
                 }
 
@@ -46,5 +61,55 @@ impl EraseType {
             }
             _ => Ok(EraseType::None),
         }
+    }
+}
+
+pub struct EraseJob {
+    device: String,
+    disk_type: DiskType,
+    connection_type: ConnectionType,
+    erase_type: EraseType,
+    model: String,
+    serial: String,
+}
+
+impl Job for EraseJob {
+    fn get_device(&self) -> &str {
+        &self.device
+    }
+
+    fn get_name(&self) -> String {
+        format!("{} for {}: {}", self.erase_type, self.model, self.serial)
+    }
+
+    async fn run(
+        self,
+        logger: broadcast::Sender<String>,
+    ) -> Result<(), Box<dyn std::error::Error + Send>> {
+        let intro = format!(
+            "Starting Secure Disk Erasure
+            =================================================
+            Model: {}
+            Serial: {}
+            Device Name: {}
+            =================================================
+            Connected via: {}
+            Detected Disk Type: {}
+            Selected Erasure Method: {}
+            =================================================
+        ",
+            self.model,
+            self.serial,
+            self.device,
+            self.connection_type,
+            self.disk_type,
+            self.erase_type
+        );
+
+        match self.erase_type {
+            EraseType::AtaEnhancedSecureErase => Hdparm::ata_secure_erase_disk_enhanced(device),
+        }
+
+        todo!()
     }
 }
