@@ -1,0 +1,21 @@
+{% extends "base" %}
+
+{% block content %}
+    <h1>Running Jobs</h1>
+
+    {% if flash %}
+        <div class="card field-{{flash.0}}-msg">
+            {{ flash.1 }}
+        </div>
+    {% endif %}
+
+    {% for job in running_jobs %}
+    <div class="card">
+        <h2>{{ job.name }}</h2>
+        <div>
+        content
+        </div>
+    </div>
+    {% endfor %}
+
+{% endblock content %}

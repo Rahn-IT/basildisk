@@ -5,6 +5,7 @@ use thiserror::Error;
 use tokio::task::JoinSet;
 
 use crate::{
+    erase::{EraseType, GetEraseTypeError},
     lsblk::{LsBlk, LsBlkError},
     smartctl::{SmartCtl, SmartCtlError},
 };
@@ -19,15 +20,16 @@ pub struct Disk {
     removable: bool,
     disk_type: DiskType,
     connection_type: ConnectionType,
+    erase_type: EraseType,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, PartialEq, Eq, Clone, Copy)]
 pub enum DiskType {
     SSD,
     HDD,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone, Copy)]
 pub enum ConnectionType {
     SATA,
     SCSI,
@@ -44,6 +46,8 @@ pub enum ListDiskError {
     Join(#[from] tokio::task::JoinError),
     #[error("error during smartctl: {0}")]
     SmartCtl(#[from] SmartCtlError),
+    #[error("error while getting erase type: {0}")]
+    EraseTypeError(#[from] GetEraseTypeError),
 }
 
 impl Disk {
@@ -67,61 +71,66 @@ impl Disk {
             smartctl.insert(device, smart_data);
         }
 
-        let disks = lsblk
-            .into_iter()
-            .map(|lsblk_info| {
-                if let Some(smart) = smartctl.remove(&lsblk_info.name) {
-                    let model_exact: Option<String> = smart.model_name;
-                    let model_family: Option<String> = smart.model_family;
+        let mut disks = Vec::new();
 
-                    let mut model_display = model_family
-                        .unwrap_or_else(|| {
-                            model_exact.clone().unwrap_or_else(|| {
-                                lsblk_info
-                                    .model
-                                    .clone()
-                                    .unwrap_or_else(|| "Unknown Disk Model".to_string())
-                            })
+        for lsblk_info in lsblk {
+            if let Some(smart) = smartctl.remove(&lsblk_info.name) {
+                let model_exact: Option<String> = smart.model_name;
+                let model_family: Option<String> = smart.model_family;
+
+                let mut model_display = model_family
+                    .unwrap_or_else(|| {
+                        model_exact.clone().unwrap_or_else(|| {
+                            lsblk_info
+                                .model
+                                .clone()
+                                .unwrap_or_else(|| "Unknown Disk Model".to_string())
                         })
-                        .trim()
-                        .to_string();
+                    })
+                    .trim()
+                    .to_string();
 
-                    // Samsung just writes junk into the model family :(
-                    if model_display.contains("based") {
-                        model_display = lsblk_info.model.unwrap_or_default()
-                    }
+                // Samsung just writes junk into the model family :(
+                if model_display.contains("based") {
+                    model_display = lsblk_info.model.unwrap_or_default()
+                }
 
-                    let connection_type = if let Some(tran) = lsblk_info.tran {
-                        match tran.as_str() {
-                            "sata" => ConnectionType::SATA,
-                            "usb" => ConnectionType::USB,
-                            _ => ConnectionType::Unknown,
-                        }
-                    } else {
-                        ConnectionType::Unknown
-                    };
-
-                    let disk_type = if lsblk_info.rota {
-                        DiskType::HDD
-                    } else {
-                        DiskType::SSD
-                    };
-
-                    Disk {
-                        model: model_display,
-                        model_exact,
-                        serial: lsblk_info.serial,
-                        size_formated: Self::format_size(lsblk_info.size),
-                        device: lsblk_info.name,
-                        removable: lsblk_info.hotplug,
-                        connection_type,
-                        disk_type,
+                let connection_type = if let Some(tran) = lsblk_info.tran {
+                    match tran.as_str() {
+                        "sata" => ConnectionType::SATA,
+                        "usb" => ConnectionType::USB,
+                        _ => ConnectionType::Unknown,
                     }
                 } else {
-                    panic!("dammit");
-                }
-            })
-            .collect();
+                    ConnectionType::Unknown
+                };
+
+                let disk_type = if lsblk_info.rota {
+                    DiskType::HDD
+                } else {
+                    DiskType::SSD
+                };
+
+                let erase_type =
+                    EraseType::get_for_disk(&lsblk_info.name, connection_type, disk_type).await?;
+
+                let disk = Disk {
+                    model: model_display,
+                    model_exact,
+                    serial: lsblk_info.serial,
+                    size_formated: Self::format_size(lsblk_info.size),
+                    device: lsblk_info.name,
+                    removable: lsblk_info.hotplug,
+                    connection_type,
+                    disk_type,
+                    erase_type,
+                };
+
+                disks.push(disk);
+            } else {
+                panic!("dammit");
+            }
+        }
 
         Ok(disks)
     }

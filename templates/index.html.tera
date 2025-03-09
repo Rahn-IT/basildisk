@@ -54,6 +54,9 @@
                 </table>
                 <div class="flex">
                     <a href="/smart/{{ disk.device }}" class="btn">View SMART</a>
+                    {% if disk.erase_type != "None" %}
+                        <button class="btn">Secure Erase</button>
+                    {% endif %}
                 </div>
             </div>
         </div>

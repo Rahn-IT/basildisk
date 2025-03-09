@@ -3,6 +3,7 @@
     <div class="navbar-start">
         <ul class="menu menu-horizontal">
             <li><a href="/">Home</a></li>
+            <li><a href="/jobs">Jobs</a></li>
         </ul>
     </div>
     <div class="navbar-end">

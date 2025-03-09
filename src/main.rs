@@ -1,5 +1,6 @@
 use disk_info::Disk;
-use rocket::{fs::FileServer, request::FlashMessage, serde::Serialize};
+use jobs::{JobInfo, JobManager};
+use rocket::{fs::FileServer, request::FlashMessage, serde::Serialize, State};
 use rocket_dyn_templates::Template;
 use smartctl::SmartCtl;
 
@@ -7,15 +8,18 @@ use smartctl::SmartCtl;
 extern crate rocket;
 
 mod disk_info;
+mod erase;
+mod jobs;
 mod lsblk;
 mod smartctl;
 
 #[launch]
 async fn rocket() -> _ {
     rocket::build()
-        .mount("/", routes![index, smart])
+        .mount("/", routes![index, smart, job_list])
         .mount("/static", FileServer::from("templates/static"))
         .attach(Template::fairing())
+        .manage(JobManager::new())
 }
 
 #[derive(Serialize)]
@@ -64,4 +68,18 @@ async fn smart(device: String, flash: Option<FlashMessage<'_>>) -> Template {
     };
 
     Template::render("smart", &smart)
+}
+
+#[derive(Serialize)]
+struct Jobs {
+    running_jobs: Vec<JobInfo>,
+}
+
+#[get("/jobs")]
+async fn job_list(manager: &State<JobManager>) -> Template {
+    let jobs = Jobs {
+        running_jobs: manager.list_running_jobs().await,
+    };
+
+    Template::render("jobs", &jobs)
 }

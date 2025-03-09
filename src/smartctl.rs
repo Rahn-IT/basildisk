@@ -85,8 +85,6 @@ impl SmartCtl {
             .output()
             .await?;
 
-        println!("{}", String::from_utf8_lossy(&output.stdout));
-
         Ok(serde_json::from_slice(&output.stdout)?)
     }
 }
