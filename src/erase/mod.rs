@@ -1,6 +1,7 @@
 use std::fmt::Display;
 
 use hdparm::{Hdparm, HdparmError};
+use rocket_sync_db_pools::diesel::sql_types::BigInt;
 use serde::Serialize;
 use thiserror::Error;
 use tokio::sync::broadcast;
@@ -107,9 +108,15 @@ impl Job for EraseJob {
         );
 
         match self.erase_type {
-            EraseType::AtaEnhancedSecureErase => Hdparm::ata_secure_erase_disk_enhanced(device),
+            EraseType::AtaEnhancedSecureErase => {
+                Hdparm::ata_secure_erase_disk_enhanced(self.device, logger)
+                    .await
+                    .map_err(|err| {
+                        let b: Box<dyn std::error::Error + Send> = Box::new(err);
+                        b
+                    })
+            }
+            _ => todo!(),
         }
-
-        todo!()
     }
 }
