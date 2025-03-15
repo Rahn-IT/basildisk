@@ -72,13 +72,9 @@
                     <a class="btn" href="/">Abort</a>
                     {% if disk.erase_type != "None" %}
                         {% if requires_unfreeze %}
-                            <button class="btn">Temporary Sleep Mode</button>
+                            <button class="btn unfreeze-btn">Temporary Sleep Mode</button>
                         {% else %}
-                            <form class="post">
-                                <input type="hidden" name="serial" value="{{ disk.serial }}">
-                                <input type="hidden" name="timestamp" value="{{ timestamp }}">
-                                <input type="submit" class="btn" value="Confirm Secure Erase (Not Reversible)">
-                            </form>
+                            <button class="btn erase-btn" data-serial="{{ disk.serial }}" data-timestamp="{{ timestamp }}">Confirm Secure Erase (Not Reversible)</button>
                         {% endif %}
                     {% endif %}
                 </div>
