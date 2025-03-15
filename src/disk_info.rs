@@ -14,7 +14,7 @@ use crate::{
 pub struct Disk {
     model: String,
     model_exact: Option<String>,
-    serial: Option<String>,
+    pub serial: Option<String>,
     size_formated: String,
     pub device: String,
     removable: bool,

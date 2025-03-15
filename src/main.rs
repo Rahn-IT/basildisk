@@ -33,7 +33,14 @@ async fn rocket() -> _ {
     rocket::build()
         .mount(
             "/",
-            routes![index, smart, job_list, secure_erase_request, sleep],
+            routes![
+                index,
+                smart,
+                job_list,
+                secure_erase_request,
+                secure_erase_confirm,
+                sleep
+            ],
         )
         .mount("/static", FileServer::from("templates/static"))
         .attach(Template::fairing())
@@ -111,7 +118,7 @@ struct EraseRequestData {
 }
 
 #[get("/secure_erase/<device>")]
-async fn secure_erase_request(device: String) -> Template {
+async fn secure_erase_request(device: String, flash: Option<FlashMessage<'_>>) -> Template {
     let disks: Result<Vec<Disk>, String> = Disk::list().await.map_err(|err| format!("{:?}", err));
     match disks {
         Ok(disks) => {
@@ -136,7 +143,7 @@ async fn secure_erase_request(device: String) -> Template {
                         .map(|time| time.as_secs())
                         .unwrap_or(0),
                     requires_unfreeze: false,
-                    flash: None,
+                    flash: flash.map(FlashMessage::into_inner),
                 };
 
                 match requires_unfreeze {
@@ -172,32 +179,41 @@ async fn secure_erase_request(device: String) -> Template {
 }
 
 #[derive(FromForm)]
-struct EraseData {
+struct ConfirmErase {
     serial: String,
     timestamp: u64,
 }
 
 #[post("/secure_erase/<device>", data = "<erase_form>")]
-async fn secure_erase_confirm(device: String, erase_form: Form<EraseData>) -> Flash<Redirect> {
-    todo!()
-}
+async fn secure_erase_confirm(device: String, erase_form: Form<ConfirmErase>) -> Flash<Redirect> {
+    let erase_form = erase_form.into_inner();
+    let on_error = Redirect::to(format!("/secure_erase/{}", device));
 
-#[get("/check_frozen/<device>")]
-async fn check_frozen(device: String) -> Result<Json<bool>, String> {
-    let disks = Disk::list().await.map_err(|err| format!("{:?}", err))?;
+    let disks = Disk::list().await.map_err(|err| format!("{:?}", err));
+    let disks = match disks {
+        Ok(disks) => disks,
+        Err(err) => return Flash::error(on_error, err.to_string()),
+    };
+
+    let now: u64 = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+
+    if now - erase_form.timestamp > 60 {
+        return Flash::error(on_error, "Confirm Timeout, try again!");
+    }
 
     if let Some(disk) = disks.into_iter().find(|disk| disk.device == device) {
-        if disk.disk_type == DiskType::Hdd {
-            Ok(Json(false))
-        } else {
-            let hdparm = Hdparm::get_for_disk(&device)
-                .await
-                .map_err(|err| format!("{:?}", err))?;
-
-            Ok(Json(hdparm.frozen))
+        if disk.serial != Some(erase_form.serial) {
+            return Flash::error(
+                on_error,
+                "Serial number of Disk changed. Did you unplug the disk?",
+            );
         }
+        Flash::error(on_error, "Todo")
     } else {
-        Err("Disk not found!".into())
+        Flash::error(on_error, "Disk not found!")
     }
 }
 
@@ -209,5 +225,6 @@ async fn sleep() {
         .arg("-s")
         .arg("5")
         .status()
-        .await;
+        .await
+        .unwrap();
 }
