@@ -1,4 +1,4 @@
-use std::fmt::Display;
+use std::fmt::{write, Display};
 
 use hdparm::{Hdparm, HdparmError};
 use rocket_sync_db_pools::diesel::sql_types::BigInt;
@@ -11,9 +11,8 @@ use crate::{
     jobs::Job,
 };
 
-mod hdparm;
+pub mod hdparm;
 
-#[derive(Serialize)]
 pub enum EraseType {
     None,
     BlockOverride,
@@ -21,10 +20,20 @@ pub enum EraseType {
     AtaEnhancedSecureErase,
 }
 
+impl Serialize for EraseType {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let display = format!("{self}");
+        serializer.serialize_str(&display)
+    }
+}
+
 impl Display for EraseType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            EraseType::None => unimplemented!(),
+            EraseType::None => write!(f, "None"),
             EraseType::BlockOverride => write!(f, "Block Override"),
             EraseType::AtaSecureErase => write!(f, "ATA Secure Erase"),
             EraseType::AtaEnhancedSecureErase => write!(f, "ATA Enhanced Secure Erase"),

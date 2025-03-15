@@ -1,7 +1,11 @@
 {% extends "base" %}
 
 {% block content %}
-    <h1>Disks</h1>
+    {% if disk %}
+        <h1>Are you sure you want to secure erase this disk?</h1>
+    {% else %}
+        <h1>Secure Erase not possible!</h1>
+    {% endif %}
 
     {% if flash %}
         <div class="card field-{{flash.0}}-msg">
@@ -9,7 +13,7 @@
         </div>
     {% endif %}
 
-    {% for disk in disks %}
+    {% if disk %}
     <div class="card">
         <h2>{{ disk.model }}</h2>
         <div class="flex flex-start">
@@ -46,21 +50,41 @@
                         <th>Connection Type</th>
                         <td>{{ disk.connection_type }}
                     </tr>
-                    <tr>
-                        <th>Removable</th>
-                        <td>{% if disk.removable %}✅{% else %}❌{% endif %}</td>
-                    </tr>
-
                 </table>
+                <table class="grow">
+                    <tr>
+                        <th>Erasure Type</th>
+                        <td>{{ disk.erase_type }}
+                    </tr>
+                </table>
+
+
+                {% if requires_unfreeze %}
+                    <div>
+                        This disk is currently frozen, which means basildisk is unable to perform the secure erase procedure.
+                    </div>
+                    <div>
+                        You may unfreeze this disk by putting the machine to sleep mode for a few seconds with the button below.
+                    </div>
+                {% endif %}
+                    
                 <div class="flex">
-                    <a href="/smart/{{ disk.device }}" class="btn">View SMART</a>
+                    <a class="btn" href="/">Abort</a>
                     {% if disk.erase_type != "None" %}
-                        <a class="btn" href="/secure_erase/{{ disk.device }}">Secure Erase</a>
+                        {% if requires_unfreeze %}
+                            <button class="btn">Temporary Sleep Mode</button>
+                        {% else %}
+                            <form class="post">
+                                <input type="hidden" name="serial" value="{{ disk.serial }}">
+                                <input type="hidden" name="timestamp" value="{{ timestamp }}">
+                                <input type="submit" class="btn" value="Confirm Secure Erase (Not Reversible)">
+                            </form>
+                        {% endif %}
                     {% endif %}
                 </div>
             </div>
         </div>
     </div>
-    {% endfor %}
+    {% endif %}
 
 {% endblock content %}

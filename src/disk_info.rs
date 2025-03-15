@@ -16,11 +16,11 @@ pub struct Disk {
     model_exact: Option<String>,
     serial: Option<String>,
     size_formated: String,
-    device: String,
+    pub device: String,
     removable: bool,
-    disk_type: DiskType,
+    pub disk_type: DiskType,
     connection_type: ConnectionType,
-    erase_type: EraseType,
+    pub erase_type: EraseType,
 }
 
 #[derive(Serialize, PartialEq, Eq, Clone, Copy)]
@@ -38,13 +38,23 @@ impl Display for DiskType {
     }
 }
 
-#[derive(Serialize, Clone, Copy)]
+#[derive(Clone, Copy)]
 pub enum ConnectionType {
     Sata,
     Scsi,
     Nvme,
     Usb,
     Unknown,
+}
+
+impl Serialize for ConnectionType {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let display = format!("{self}");
+        serializer.serialize_str(&display)
+    }
 }
 
 impl Display for ConnectionType {
