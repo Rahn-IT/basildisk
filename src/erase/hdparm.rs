@@ -79,17 +79,28 @@ impl Hdparm {
         logger: &broadcast::Sender<String>,
     ) -> Result<(), AtaSecureEraseError> {
         // Set Device Password
-        let command = "hdparm";
-        let args = ["--user-master", "u", "--security-set-pass", "p"];
-        let device_path = format!("/dev/{device}");
-        let output = tokio::process::Command::new(command)
-            .args(args)
-            .arg(&device_path)
-            .output()
-            .await?;
+        let mut command = tokio::process::Command::new("hdparm");
+        command
+            .arg("--user-master")
+            .arg("--security-set-pass")
+            .arg("p")
+            .arg(format!("/dev/{device}"))
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
 
-        let run_log = format!("> {} {} {}", command, args.join(" "), &device_path);
+        let std_cmd = command.as_std();
+
+        let run_log = format!(
+            "> {} {}\n",
+            std_cmd.get_program().to_string_lossy(),
+            std_cmd
+                .get_args()
+                .map(|arg| arg.to_string_lossy())
+                .collect::<Vec<_>>()
+                .join(" "),
+        );
         logger.send(run_log);
+        let output = command.output().await?;
 
         let error = String::from_utf8(output.stderr)?;
         let output = String::from_utf8(output.stdout)?;
@@ -99,18 +110,29 @@ impl Hdparm {
 
         // Erase Device
 
-        let command = "hdparm";
-        let args = ["--user-master", "u", "--security-erase-enhanced", "p"];
-        let device_path = format!("/dev/{device}");
-        let mut child = tokio::process::Command::new(command)
-            .args(args)
-            .arg(&device_path)
+        let mut command = tokio::process::Command::new("hdparm");
+        command
+            .arg("--user-master")
+            .arg("--security-erase-enhanced")
+            .arg("p")
+            .arg(format!("/dev/{device}"))
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()?;
+            .stderr(Stdio::piped());
 
-        let run_log = format!("> {} {} {}", command, args.join(" "), &device_path);
+        let std_cmd = command.as_std();
+
+        let run_log = format!(
+            "> {} {}\n",
+            std_cmd.get_program().to_string_lossy(),
+            std_cmd
+                .get_args()
+                .map(|arg| arg.to_string_lossy())
+                .collect::<Vec<_>>()
+                .join(" "),
+        );
         logger.send(run_log);
+
+        let mut child = command.spawn()?;
 
         let mut joinset = JoinSet::new();
 
@@ -145,7 +167,11 @@ impl Hdparm {
         joinset.join_all().await;
 
         if let Some(code) = child.wait().await?.code() {
-            Err(AtaSecureEraseError::ExitCode(code))
+            if code == 0 {
+                Ok(())
+            } else {
+                Err(AtaSecureEraseError::ExitCode(code))
+            }
         } else {
             Ok(())
         }

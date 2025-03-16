@@ -108,7 +108,7 @@ Connected via: {}
 Detected Disk Type: {}
 Selected Erasure Method: {}
 =================================================
-        ",
+",
             self.model,
             self.serial,
             self.device,
@@ -131,17 +131,19 @@ Selected Erasure Method: {}
             _ => todo!(),
         };
 
-        let outro = if result.is_ok() {
-            "
+        let outro = if let Err(err) = &result {
+            format!(
+                "
 =================================================
-Secure Erase was successful!
+Errors detected during secure erase!
 =================================================
-            "
-            .to_string()
+{err}
+"
+            )
         } else {
             "
 =================================================
-Errors detected during secure erase!
+Secure Erase was successful!
 =================================================
             "
             .to_string()
