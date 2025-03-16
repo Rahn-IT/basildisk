@@ -14,6 +14,15 @@ use uuid::Uuid;
 
 use crate::{schema::jobs, DbConn};
 
+const BANNER: &str = r"
+__________               __ __       _____        __    
+\______   \____    ________|  |   __| _/__| ______  | __
+  |   |  _/__  \  /  ___/  |  |  / __ ||  |/  ___/  |/ /
+  |   |   \/ __ \_\___ \|  |  |__ /_/ ||  |\___ \|    \ 
+ /______  /____  /____  \__|____/____ ||__|____  \__|_ \
+        \/     \/     \/             \/        \/     \/
+";
+
 pub struct JobManager {
     running_jobs: std::sync::Mutex<BTreeMap<String, RunningJob>>,
     disk_locks: std::sync::Mutex<BTreeMap<String, Arc<tokio::sync::Mutex<()>>>>,
@@ -137,7 +146,7 @@ impl JobManager {
 
         let (send, recv) = broadcast::channel(3);
 
-        let log = Arc::new(std::sync::Mutex::new(String::new()));
+        let log = Arc::new(std::sync::Mutex::new(BANNER.to_string()));
 
         let rjob = RunningJob {
             info: JobInfo {
