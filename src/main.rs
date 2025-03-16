@@ -3,19 +3,22 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
+use diesel::{backend::Backend, deserialize, serialize, sql_types::VarChar};
 use disk_info::{Disk, DiskType, ListDiskError};
 use erase::{hdparm::Hdparm, EraseType};
-use jobs::{JobInfo, JobManager};
+use jobs::{JobInfo, JobManager, TestJob};
 use rocket::{
+    fairing::{AdHoc, Fairing},
     form::Form,
     fs::FileServer,
     request::FlashMessage,
     response::{Flash, Redirect},
     serde::{json::Json, Serialize},
     time::format_description::modifier::UnixTimestamp,
-    State,
+    Build, Rocket, State,
 };
 use rocket_dyn_templates::Template;
+use rocket_sync_db_pools::database;
 use smartctl::SmartCtl;
 use thiserror::Error;
 
@@ -26,7 +29,11 @@ mod disk_info;
 mod erase;
 mod jobs;
 mod lsblk;
+mod schema;
 mod smartctl;
+
+#[database("sqlite_database")]
+pub struct DbConn(diesel::SqliteConnection);
 
 #[launch]
 async fn rocket() -> _ {
@@ -37,14 +44,34 @@ async fn rocket() -> _ {
                 index,
                 smart,
                 job_list,
+                job_detail,
                 secure_erase_request,
                 secure_erase_confirm,
-                sleep
+                sleep,
             ],
         )
         .mount("/static", FileServer::from("templates/static"))
         .attach(Template::fairing())
+        .attach(DbConn::fairing())
+        .attach(AdHoc::on_ignite("Run Migrations", run_migrations))
         .manage(Arc::new(JobManager::new()))
+}
+
+async fn run_migrations(rocket: Rocket<Build>) -> Rocket<Build> {
+    use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
+
+    const MIGRATIONS: EmbeddedMigrations = embed_migrations!("migrations");
+
+    DbConn::get_one(&rocket)
+        .await
+        .expect("database connection")
+        .run(|conn| {
+            conn.run_pending_migrations(MIGRATIONS)
+                .expect("diesel migrations");
+        })
+        .await;
+
+    rocket
 }
 
 #[derive(Serialize)]
@@ -98,12 +125,14 @@ async fn smart(device: String, flash: Option<FlashMessage<'_>>) -> Template {
 #[derive(Serialize)]
 struct Jobs {
     running_jobs: Vec<JobInfo>,
+    finished_jobs: Vec<JobInfo>,
 }
 
 #[get("/jobs")]
-async fn job_list(manager: &State<Arc<JobManager>>) -> Template {
+async fn job_list(manager: &State<Arc<JobManager>>, conn: DbConn) -> Template {
     let jobs = Jobs {
         running_jobs: manager.list_running_jobs().await,
+        finished_jobs: manager.list_finished_jobs(&conn).await.unwrap(),
     };
 
     Template::render("jobs", &jobs)
@@ -185,7 +214,12 @@ struct ConfirmErase {
 }
 
 #[post("/secure_erase/<device>", data = "<erase_form>")]
-async fn secure_erase_confirm(device: String, erase_form: Form<ConfirmErase>) -> Flash<Redirect> {
+async fn secure_erase_confirm(
+    device: String,
+    erase_form: Form<ConfirmErase>,
+    job_manager: &State<Arc<JobManager>>,
+    conn: DbConn,
+) -> Flash<Redirect> {
     let erase_form = erase_form.into_inner();
     let on_error = Redirect::to(format!("/secure_erase/{}", device));
 
@@ -211,7 +245,13 @@ async fn secure_erase_confirm(device: String, erase_form: Form<ConfirmErase>) ->
                 "Serial number of Disk changed. Did you unplug the disk?",
             );
         }
-        Flash::error(on_error, "Todo")
+
+        let id = match job_manager.run_job(TestJob { device }, conn).await {
+            Ok(id) => id,
+            Err(err) => return Flash::error(on_error, format!("{err}")),
+        };
+
+        Flash::success(Redirect::to(format!("/jobs/{id}")), "Secure Erase started!")
     } else {
         Flash::error(on_error, "Disk not found!")
     }
@@ -227,4 +267,27 @@ async fn sleep() {
         .status()
         .await
         .unwrap();
+}
+
+#[derive(Serialize)]
+struct JobDetail {
+    job: JobInfo,
+    flash: Option<(String, String)>,
+}
+
+#[get("/jobs/<id>")]
+async fn job_detail(
+    job_manager: &State<Arc<JobManager>>,
+    id: String,
+    conn: DbConn,
+    flash: Option<FlashMessage<'_>>,
+) -> Template {
+    let job = job_manager.inner().get_job_info(id, &conn).await.unwrap();
+
+    let detail = JobDetail {
+        job,
+        flash: flash.map(FlashMessage::into_inner),
+    };
+
+    Template::render("job_detail", &detail)
 }
