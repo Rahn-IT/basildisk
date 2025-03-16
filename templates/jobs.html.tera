@@ -1,7 +1,6 @@
 {% extends "base" %}
 
 {% block content %}
-    <h1>Running Jobs</h1>
 
     {% if flash %}
         <div class="card field-{{flash.0}}-msg">
@@ -9,7 +8,20 @@
         </div>
     {% endif %}
 
+    <h1>Running Jobs</h1>
+
     {% for job in running_jobs %}
+    <a class="card" href="/jobs/{{ job.id }}">
+        <h2>{{ job.name }}</h2>
+        <div>
+        content
+        </div>
+    </div>
+    {% endfor %}
+
+    <h1>Finished Jobs</h1>
+
+    {% for job in finished_jobs %}
     <a class="card" href="/jobs/{{ job.id }}">
         <h2>{{ job.name }}</h2>
         <div>
