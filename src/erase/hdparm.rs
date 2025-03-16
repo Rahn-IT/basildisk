@@ -76,7 +76,7 @@ impl Hdparm {
 
     pub async fn ata_secure_erase_disk_enhanced(
         device: String,
-        logger: broadcast::Sender<String>,
+        logger: &broadcast::Sender<String>,
     ) -> Result<(), AtaSecureEraseError> {
         // Set Device Password
         let command = "hdparm";

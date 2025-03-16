@@ -5,7 +5,7 @@ use std::{
 
 use diesel::{backend::Backend, deserialize, serialize, sql_types::VarChar};
 use disk_info::{Disk, DiskType, ListDiskError};
-use erase::{hdparm::Hdparm, EraseType};
+use erase::{hdparm::Hdparm, EraseJob, EraseType};
 use jobs::{JobInfo, JobManager, TestJob};
 use rocket::{
     fairing::{AdHoc, Fairing},
@@ -241,14 +241,23 @@ async fn secure_erase_confirm(
     }
 
     if let Some(disk) = disks.into_iter().find(|disk| disk.device == device) {
-        if disk.serial != Some(erase_form.serial) {
+        if disk.serial.as_ref() != Some(&erase_form.serial) {
             return Flash::error(
                 on_error,
                 "Serial number of Disk changed. Did you unplug the disk?",
             );
         }
 
-        let id = match job_manager.run_job(TestJob { device }, conn).await {
+        let job = EraseJob {
+            device,
+            connection_type: disk.connection_type,
+            disk_type: disk.disk_type,
+            erase_type: disk.erase_type,
+            model: disk.model,
+            serial: erase_form.serial,
+        };
+
+        let id = match job_manager.run_job(job, conn).await {
             Ok(id) => id,
             Err(err) => return Flash::error(on_error, format!("{err}")),
         };

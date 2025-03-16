@@ -12,14 +12,14 @@ use crate::{
 
 #[derive(Serialize)]
 pub struct Disk {
-    model: String,
-    model_exact: Option<String>,
+    pub model: String,
+    pub model_exact: Option<String>,
     pub serial: Option<String>,
     size_formated: String,
     pub device: String,
     removable: bool,
     pub disk_type: DiskType,
-    connection_type: ConnectionType,
+    pub connection_type: ConnectionType,
     pub erase_type: EraseType,
 }
 

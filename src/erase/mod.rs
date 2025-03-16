@@ -75,12 +75,12 @@ impl EraseType {
 }
 
 pub struct EraseJob {
-    device: String,
-    disk_type: DiskType,
-    connection_type: ConnectionType,
-    erase_type: EraseType,
-    model: String,
-    serial: String,
+    pub device: String,
+    pub disk_type: DiskType,
+    pub connection_type: ConnectionType,
+    pub erase_type: EraseType,
+    pub model: String,
+    pub serial: String,
 }
 
 impl Job for EraseJob {
@@ -97,16 +97,17 @@ impl Job for EraseJob {
         logger: broadcast::Sender<String>,
     ) -> Result<(), Box<dyn std::error::Error + Send>> {
         let intro = format!(
-            "Starting Secure Disk Erasure
-            =================================================
-            Model: {}
-            Serial: {}
-            Device Name: {}
-            =================================================
-            Connected via: {}
-            Detected Disk Type: {}
-            Selected Erasure Method: {}
-            =================================================
+            "
+Starting Secure Disk Erasure
+=================================================
+Model: {}
+Serial: {}
+Device Name: {}
+=================================================
+Connected via: {}
+Detected Disk Type: {}
+Selected Erasure Method: {}
+=================================================
         ",
             self.model,
             self.serial,
@@ -116,9 +117,11 @@ impl Job for EraseJob {
             self.erase_type
         );
 
-        match self.erase_type {
+        logger.send(intro).unwrap();
+
+        let result = match self.erase_type {
             EraseType::AtaEnhancedSecureErase => {
-                Hdparm::ata_secure_erase_disk_enhanced(self.device, logger)
+                Hdparm::ata_secure_erase_disk_enhanced(self.device, &logger)
                     .await
                     .map_err(|err| {
                         let b: Box<dyn std::error::Error + Send> = Box::new(err);
@@ -126,6 +129,26 @@ impl Job for EraseJob {
                     })
             }
             _ => todo!(),
-        }
+        };
+
+        let outro = if result.is_ok() {
+            "
+=================================================
+Secure Erase was successful!
+=================================================
+            "
+            .to_string()
+        } else {
+            "
+=================================================
+Errors detected during secure erase!
+=================================================
+            "
+            .to_string()
+        };
+
+        logger.send(outro).unwrap();
+
+        result
     }
 }
