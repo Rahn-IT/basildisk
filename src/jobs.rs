@@ -89,6 +89,29 @@ impl JobManager {
         .await
     }
 
+    pub async fn subscribe_log(
+        &self,
+        id: String,
+        conn: &DbConn,
+    ) -> diesel::result::QueryResult<(String, Option<broadcast::Receiver<String>>)> {
+        {
+            let lock = self.running_jobs.lock().unwrap();
+
+            if let Some(job) = lock.get(&id) {
+                let lock = job.log.lock().unwrap();
+
+                let subscriber = job.incoming.resubscribe();
+                return Ok((lock.clone(), Some(subscriber)));
+            }
+        }
+
+        let log = conn
+            .run(|conn| jobs::table.select(jobs::log).find(id).first::<String>(conn))
+            .await?;
+
+        Ok((log, None))
+    }
+
     fn lock_disk(&self, device: &str) -> Result<tokio::sync::OwnedMutexGuard<()>, TryLockError> {
         let mut guard = self.disk_locks.lock().unwrap();
 

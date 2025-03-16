@@ -5,6 +5,17 @@ document.addEventListener("DOMContentLoaded", () => {
     document.querySelectorAll('.erase-btn').forEach(btn => {
         btn.addEventListener('click', () => erase(btn.dataset));
     });
+    document.querySelectorAll('.job-log').forEach(log => {
+        const id = log.dataset.id;
+        const protocol = location.protocol === 'https:' ? 'wss' : 'ws';
+        const ws = new WebSocket(`${protocol}://${location.host}/jobs/${id}/log`);
+
+        log.textContent = "";
+        ws.onmessage = event => {
+            log.textContent += event.data;
+        };
+        ws.onerror = error => console.error('WebSocket error:', error);
+    });
 });
 
 async function erase(button_data) {

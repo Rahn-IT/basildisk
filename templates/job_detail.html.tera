@@ -12,6 +12,11 @@
     <div class="card">
         <h2>{{ job.name }}</h2>
 
+        <div>
+            <h4>Logs</h4>
+            <pre class="log job-log" data-id="{{ job.id }}">
+            </pre>
+        </div>
     </div>
 
 {% endblock content %}

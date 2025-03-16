@@ -11,6 +11,7 @@ use rocket::{
     fairing::{AdHoc, Fairing},
     form::Form,
     fs::FileServer,
+    futures::SinkExt,
     request::FlashMessage,
     response::{Flash, Redirect},
     serde::{json::Json, Serialize},
@@ -45,6 +46,7 @@ async fn rocket() -> _ {
                 smart,
                 job_list,
                 job_detail,
+                job_log,
                 secure_erase_request,
                 secure_erase_confirm,
                 sleep,
@@ -290,4 +292,28 @@ async fn job_detail(
     };
 
     Template::render("job_detail", &detail)
+}
+
+#[get("/jobs/<id>/log")]
+async fn job_log(
+    ws: rocket_ws::WebSocket,
+    job_manager: &State<Arc<JobManager>>,
+    id: String,
+    conn: DbConn,
+) -> rocket_ws::Channel<'static> {
+    let (current, subscriber) = job_manager.subscribe_log(id, &conn).await.unwrap();
+
+    ws.channel(move |mut stream| {
+        Box::pin(async move {
+            stream.send(rocket_ws::Message::Text(current)).await?;
+
+            if let Some(mut subscriber) = subscriber {
+                while let Ok(log) = subscriber.recv().await {
+                    stream.send(rocket_ws::Message::Text(log)).await?;
+                }
+            }
+
+            Ok(())
+        })
+    })
 }
