@@ -9,6 +9,7 @@ It's meant to be either run using a usb-stick on the machine you want to delete 
 
 ## requirements
 
+- lsblk
 - smartctl
 - hdparm
 - nvme
