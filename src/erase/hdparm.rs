@@ -74,9 +74,10 @@ impl Hdparm {
         Ok(hdparm)
     }
 
-    pub async fn ata_secure_erase_disk_enhanced(
+    pub async fn ata_secure_erase_disk(
         device: String,
         logger: &broadcast::Sender<String>,
+        enhanced: bool,
     ) -> Result<(), AtaSecureEraseError> {
         // Set Device Password
         let mut command = tokio::process::Command::new("hdparm");
@@ -110,10 +111,16 @@ impl Hdparm {
 
         // Erase Device
 
+        let erase_arg = if enhanced {
+            "--security-erase-enhanced"
+        } else {
+            "--security-erase"
+        };
+
         let mut command = tokio::process::Command::new("hdparm");
         command
             .arg("--user-master")
-            .arg("--security-erase-enhanced")
+            .arg(erase_arg)
             .arg("p")
             .arg(format!("/dev/{device}"))
             .stdout(Stdio::piped())
@@ -139,28 +146,20 @@ impl Hdparm {
         let stdout = child.stdout.take().unwrap();
         let logger2 = logger.clone();
         joinset.spawn(async move {
-            let mut stdout = BufReader::new(stdout);
-            let mut buf = Vec::new();
-            while let Ok(bytes) = stdout.read_until(b'\n', &mut buf).await {
-                if bytes == 0 {
-                    break;
-                }
-
-                logger2.send(String::from_utf8_lossy(&buf[..bytes]).to_string());
+            let mut stdout = BufReader::new(stdout).lines();
+            while let Ok(Some(mut line)) = stdout.next_line().await {
+                line.push('\n');
+                logger2.send(line);
             }
         });
 
         let stderr = child.stderr.take().unwrap();
         let logger2 = logger.clone();
         joinset.spawn(async move {
-            let mut stdout = BufReader::new(stderr);
-            let mut buf = Vec::new();
-            while let Ok(bytes) = stdout.read_until(b'\n', &mut buf).await {
-                if bytes == 0 {
-                    break;
-                }
-
-                logger2.send(String::from_utf8_lossy(&buf[..bytes]).to_string());
+            let mut stderr = BufReader::new(stderr).lines();
+            while let Ok(Some(mut line)) = stderr.next_line().await {
+                line.push('\n');
+                logger2.send(line);
             }
         });
 

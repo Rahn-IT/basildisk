@@ -3,15 +3,18 @@ use std::fmt::{write, Display};
 use hdparm::{Hdparm, HdparmError};
 use rocket_sync_db_pools::diesel::sql_types::BigInt;
 use serde::Serialize;
+use shred::Shred;
 use thiserror::Error;
 use tokio::sync::broadcast;
 
 use crate::{
     disk_info::{ConnectionType, Disk, DiskType},
     jobs::Job,
+    schema::jobs::disk,
 };
 
 pub mod hdparm;
+pub mod shred;
 
 pub enum EraseType {
     None,
@@ -66,9 +69,13 @@ impl EraseType {
                 } else if hdparm.enhanced_secure_erase {
                     EraseType::AtaEnhancedSecureErase
                 } else {
-                    EraseType::None
+                    EraseType::BlockOverride
                 })
             }
+            ConnectionType::Usb => match disk_type {
+                DiskType::Ssd => Ok(EraseType::None),
+                DiskType::Hdd => Ok(EraseType::BlockOverride),
+            },
             _ => Ok(EraseType::None),
         }
     }
@@ -121,7 +128,21 @@ Selected Erasure Method: {}
 
         let result = match self.erase_type {
             EraseType::AtaEnhancedSecureErase => {
-                Hdparm::ata_secure_erase_disk_enhanced(self.device, &logger)
+                Hdparm::ata_secure_erase_disk(self.device, &logger, true)
+                    .await
+                    .map_err(|err| {
+                        let b: Box<dyn std::error::Error + Send> = Box::new(err);
+                        b
+                    })
+            }
+            EraseType::AtaSecureErase => Hdparm::ata_secure_erase_disk(self.device, &logger, false)
+                .await
+                .map_err(|err| {
+                    let b: Box<dyn std::error::Error + Send> = Box::new(err);
+                    b
+                }),
+            EraseType::BlockOverride => {
+                Shred::override_disk(self.device, &logger)
                     .await
                     .map_err(|err| {
                         let b: Box<dyn std::error::Error + Send> = Box::new(err);

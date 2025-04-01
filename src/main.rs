@@ -161,6 +161,7 @@ async fn secure_erase_request(device: String, flash: Option<FlashMessage<'_>>) -
                             .map_err(|err| format!("{:?}", err))
                             .map(|hdparm| hdparm.frozen)
                     }
+                    EraseType::BlockOverride => Ok(false),
                     _ => Err(
                         "Secure Erase not yet supported for this disk type or connection"
                             .to_string(),
