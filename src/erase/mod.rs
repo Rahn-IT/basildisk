@@ -57,21 +57,20 @@ impl EraseType {
         disk_type: DiskType,
     ) -> Result<Self, GetEraseTypeError> {
         match connection_type {
-            ConnectionType::Sata => {
-                if disk_type != DiskType::Ssd {
-                    return Ok(EraseType::None);
+            ConnectionType::Sata => match disk_type {
+                DiskType::Hdd => Ok(EraseType::BlockOverride),
+                DiskType::Ssd => {
+                    let hdparm = Hdparm::get_for_disk(device).await?;
+
+                    Ok(if hdparm.secure_erase {
+                        EraseType::AtaSecureErase
+                    } else if hdparm.enhanced_secure_erase {
+                        EraseType::AtaEnhancedSecureErase
+                    } else {
+                        EraseType::None
+                    })
                 }
-
-                let hdparm = Hdparm::get_for_disk(device).await?;
-
-                Ok(if hdparm.secure_erase {
-                    EraseType::AtaSecureErase
-                } else if hdparm.enhanced_secure_erase {
-                    EraseType::AtaEnhancedSecureErase
-                } else {
-                    EraseType::BlockOverride
-                })
-            }
+            },
             ConnectionType::Usb => match disk_type {
                 DiskType::Ssd => Ok(EraseType::None),
                 DiskType::Hdd => Ok(EraseType::BlockOverride),
