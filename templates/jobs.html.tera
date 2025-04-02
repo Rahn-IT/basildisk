@@ -16,7 +16,7 @@
         <div>
         content
         </div>
-    </div>
+    </a>
     {% endfor %}
 
     <h1>Finished Jobs</h1>

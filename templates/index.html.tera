@@ -17,7 +17,7 @@
                 <img src="/static/images/nvme.svg"> 
             {% elif disk.connection_type == "USB" %}
                 <img src="/static/images/usb.svg">
-            {% elif disk.disk_type == "SSD" %}
+            {% elif disk.disk_type == "Ssd" %}
                 <img src="/static/images/ssd.svg">
             {% else %}
                 <img src="/static/images/hdd.svg">
