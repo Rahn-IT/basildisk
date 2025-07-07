@@ -56,6 +56,11 @@ impl Hdparm {
                 break;
             }
 
+            if line.contains("min for SECURITY ERASE UNIT") {
+                hdparm.secure_erase = true;
+                continue;
+            }
+
             let mut line = line.trim();
 
             let active = !line.starts_with("not");

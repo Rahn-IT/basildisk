@@ -62,10 +62,10 @@ impl EraseType {
                 DiskType::Ssd => {
                     let hdparm = Hdparm::get_for_disk(device).await?;
 
-                    Ok(if hdparm.secure_erase {
-                        EraseType::AtaSecureErase
-                    } else if hdparm.enhanced_secure_erase {
+                    Ok(if hdparm.enhanced_secure_erase {
                         EraseType::AtaEnhancedSecureErase
+                    } else if hdparm.secure_erase {
+                        EraseType::AtaSecureErase
                     } else {
                         EraseType::None
                     })
