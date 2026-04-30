@@ -242,6 +242,13 @@ async fn erase_get(
             false,
             Some("Secure erase is not supported for this disk.".to_string()),
         ),
+        _ => (
+            false,
+            Some(format!(
+                "{} is detected but not implemented yet.",
+                disk.erase_type
+            )),
+        ),
     };
 
     let template = state
@@ -280,6 +287,13 @@ async fn erase_post(
         return Err(AppError::conflict(
             "Secure erase is not supported for this disk.",
         ));
+    }
+
+    if !disk.erase_can_run {
+        return Err(AppError::conflict(format!(
+            "{} is detected but not implemented yet.",
+            disk.erase_type
+        )));
     }
 
     if disk.is_mounted {

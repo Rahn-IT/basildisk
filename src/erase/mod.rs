@@ -1,6 +1,7 @@
 use std::fmt::Display;
 
 use hdparm::{Hdparm, HdparmError};
+use nvme::{Nvme, NvmeError};
 use serde::Serialize;
 use shred::Shred;
 use thiserror::Error;
@@ -12,6 +13,7 @@ use crate::{
 };
 
 pub mod hdparm;
+pub mod nvme;
 pub mod shred;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -20,6 +22,11 @@ pub enum EraseType {
     BlockOverride,
     AtaSecureErase,
     AtaEnhancedSecureErase,
+    NvmeSanitizeCryptoErase,
+    NvmeSanitizeBlockErase,
+    NvmeSanitizeOverwrite,
+    NvmeFormatCryptoErase,
+    NvmeFormatUserDataErase,
 }
 
 impl Serialize for EraseType {
@@ -39,6 +46,11 @@ impl Display for EraseType {
             EraseType::BlockOverride => write!(f, "Block Override"),
             EraseType::AtaSecureErase => write!(f, "ATA Secure Erase"),
             EraseType::AtaEnhancedSecureErase => write!(f, "ATA Enhanced Secure Erase"),
+            EraseType::NvmeSanitizeCryptoErase => write!(f, "NVMe Sanitize Crypto Erase"),
+            EraseType::NvmeSanitizeBlockErase => write!(f, "NVMe Sanitize Block Erase"),
+            EraseType::NvmeSanitizeOverwrite => write!(f, "NVMe Sanitize Overwrite"),
+            EraseType::NvmeFormatCryptoErase => write!(f, "NVMe Format Crypto Erase"),
+            EraseType::NvmeFormatUserDataErase => write!(f, "NVMe Format User Data Erase"),
         }
     }
 }
@@ -47,9 +59,24 @@ impl Display for EraseType {
 pub enum GetEraseTypeError {
     #[error("error during hdparm: {0}")]
     Hdparm(#[from] HdparmError),
+    #[error("error during nvme: {0}")]
+    Nvme(#[from] NvmeError),
+}
+
+#[derive(Debug, Error)]
+enum EraseRunError {
+    #[error("{0}")]
+    Unsupported(String),
 }
 
 impl EraseType {
+    pub fn can_run(self) -> bool {
+        matches!(
+            self,
+            Self::BlockOverride | Self::AtaSecureErase | Self::AtaEnhancedSecureErase
+        )
+    }
+
     pub async fn get_for_disk(
         device: &str,
         connection_type: ConnectionType,
@@ -74,6 +101,23 @@ impl EraseType {
                 DiskType::Ssd => Ok(EraseType::None),
                 DiskType::Hdd => Ok(EraseType::BlockOverride),
             },
+            ConnectionType::Nvme => {
+                let nvme = Nvme::get_for_disk(device).await?;
+
+                Ok(if nvme.sanitize_crypto_erase {
+                    EraseType::NvmeSanitizeCryptoErase
+                } else if nvme.sanitize_block_erase {
+                    EraseType::NvmeSanitizeBlockErase
+                } else if nvme.sanitize_overwrite {
+                    EraseType::NvmeSanitizeOverwrite
+                } else if nvme.format_crypto_erase {
+                    EraseType::NvmeFormatCryptoErase
+                } else if nvme.format_nvm {
+                    EraseType::NvmeFormatUserDataErase
+                } else {
+                    EraseType::None
+                })
+            }
             _ => Ok(EraseType::None),
         }
     }
@@ -146,6 +190,16 @@ Selected Erasure Method: {}
                         let b: Box<dyn std::error::Error + Send> = Box::new(err);
                         b
                     })
+            }
+            EraseType::NvmeSanitizeCryptoErase
+            | EraseType::NvmeSanitizeBlockErase
+            | EraseType::NvmeSanitizeOverwrite
+            | EraseType::NvmeFormatCryptoErase
+            | EraseType::NvmeFormatUserDataErase => {
+                let err: Box<dyn std::error::Error + Send> = Box::new(EraseRunError::Unsupported(
+                    "NVMe erase execution is not implemented yet.".to_string(),
+                ));
+                Err(err)
             }
             EraseType::None => Ok(()),
         };

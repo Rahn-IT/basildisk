@@ -24,6 +24,7 @@ pub struct Disk {
     pub disk_type: DiskType,
     pub connection_type: ConnectionType,
     pub erase_type: EraseType,
+    pub erase_can_run: bool,
 }
 
 #[derive(Serialize)]
@@ -201,6 +202,7 @@ impl Disk {
                     connection_type,
                     disk_type,
                     erase_type,
+                    erase_can_run: erase_type.can_run(),
                 };
 
                 disks.push(disk);

@@ -80,6 +80,8 @@
             {% if disk.erase_type != "None" %}
             {% if disk.is_mounted %}
             <span class="btn btn-disabled" title="Unmount this disk before secure erase">Secure Erase</span>
+            {% elif not disk.erase_can_run %}
+            <span class="btn btn-disabled" title="This erase method is detected but not implemented yet">Secure Erase</span>
             {% else %}
             <a class="btn btn-danger" href="/erase/{{ disk.device }}">Secure Erase</a>
             {% endif %}
