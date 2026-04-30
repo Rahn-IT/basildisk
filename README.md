@@ -1,7 +1,16 @@
 # Basildisk
 
+## ⚠️WARNING⚠️
+
 > [!WARNING]
-> This project is still in development and not yet ready to use.
+> **This repository is heavily vibe coded.**
+>
+> While I built the template and database scheme myself, a lot of the code was built using codex.
+>
+> It's a very simple app and we use it ourselves, but I still feel like it should be openly disclosed in my opinion
+> it will always influence code quality.
+>
+> Feel free to check out the code if you're unsure
 
 Basildisk is a webinterface which allows checking and securely erasing hard drives and SSDs.
 
