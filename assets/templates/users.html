@@ -1,0 +1,48 @@
+{% extends 'layout.html' %}
+{% block title %} Users {% endblock %}
+{% block content %}
+<h2>Add User</h2>
+<form method="post" action="/users" class="plan-form">
+    <p>
+        <label for="user_name">Name</label><br />
+        <input id="user_name" name="name" type="text" required />
+    </p>
+    <p>
+        <label for="user_password">Password</label><br />
+        <input id="user_password" name="password" type="password" minlength="8" required />
+    </p>
+    <p>
+        <label>
+            <input name="is_admin" type="checkbox" />
+            Admin
+        </label>
+    </p>
+    <div class="toolbar">
+        <input class="btn btn-primary" type="submit" value="Add User" />
+    </div>
+</form>
+
+<h2>Existing Users</h2>
+<table class="items-table">
+    <thead>
+        <tr>
+            <th>Name</th>
+            <th>Role</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for user in users %}
+        <tr>
+            <td>{{ user.name }}</td>
+            <td>{% if user.is_admin %}Admin{% else %}User{% endif %}</td>
+            <td class="actions-col">
+                {% if user.id != current_user_id %}
+                <a class="btn btn-danger" href="/users/{{ user.id }}/delete">Delete</a>
+                {% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

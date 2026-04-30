@@ -1,329 +1,118 @@
-use std::{
-    sync::Arc,
-    time::{SystemTime, UNIX_EPOCH},
+use std::{path::Path, sync::Arc};
+
+use axum::{
+    Router,
+    extract::State,
+    http::{HeaderValue, header},
+    middleware,
+    response::Html,
+    routing::{get, post},
 };
+use serde::Serialize;
+use sqlx::{Sqlite, SqlitePool, migrate::MigrateDatabase};
 
-use diesel::{backend::Backend, deserialize, serialize, sql_types::VarChar};
-use disk_info::{Disk, DiskType, ListDiskError};
-use erase::{hdparm::Hdparm, EraseJob, EraseType};
-use jobs::{JobInfo, JobManager, TestJob};
-use rocket::{
-    fairing::{AdHoc, Fairing},
-    form::Form,
-    fs::FileServer,
-    futures::SinkExt,
-    request::FlashMessage,
-    response::{Flash, Redirect},
-    serde::{json::Json, Serialize},
-    time::format_description::modifier::UnixTimestamp,
-    Build, Rocket, State,
-};
-use rocket_dyn_templates::Template;
-use rocket_sync_db_pools::database;
-use smartctl::SmartCtl;
-use thiserror::Error;
+pub mod error;
+mod users;
 
-#[macro_use]
-extern crate rocket;
+const DB_PATH: &str = "./db/db.sqlite";
 
-mod disk_info;
-mod erase;
-mod jobs;
-mod lsblk;
-mod schema;
-mod smartctl;
+#[derive(Debug, Clone)]
+struct AppState {
+    db: SqlitePool,
+    jinja: Arc<minijinja::Environment<'static>>,
+}
 
-#[database("sqlite_database")]
-pub struct DbConn(diesel::SqliteConnection);
+#[derive(Serialize)]
+struct Home {
+    is_admin: bool,
+}
 
-#[launch]
-async fn rocket() -> _ {
-    rocket::build()
-        .mount(
-            "/",
-            routes![
-                index,
-                smart,
-                job_list,
-                job_detail,
-                job_log,
-                secure_erase_request,
-                secure_erase_confirm,
-                sleep,
-            ],
+#[tokio::main]
+async fn main() {
+    if !tokio::fs::try_exists(DB_PATH).await.unwrap() {
+        tokio::fs::create_dir_all(Path::new(DB_PATH).parent().unwrap())
+            .await
+            .unwrap();
+        Sqlite::create_database(DB_PATH).await.unwrap();
+    }
+
+    let db = SqlitePool::connect(DB_PATH).await.unwrap();
+    sqlx::migrate!("./migrations").run(&db).await.unwrap();
+
+    let mut jinja = minijinja::Environment::new();
+    minijinja_embed::load_templates!(&mut jinja);
+
+    let state = AppState {
+        db: db.clone(),
+        jinja: Arc::new(jinja),
+    };
+
+    tokio::spawn(async move {
+        users::run_session_gc_scheduler(db).await;
+    });
+
+    // build our application with a route
+    let app = router()
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            users::auth_middleware,
+        ))
+        .with_state(state);
+
+    // run our app with hyper, listening globally on port 3000
+    let addr = "0.0.0.0:4040";
+    let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
+    println!("Starting webserver on: http://{}", addr);
+    axum::serve(listener, app).await.unwrap();
+}
+
+fn router() -> Router<AppState> {
+    let admin_routes = Router::new()
+        .route("/users", get(users::index).post(users::create_post))
+        .route(
+            "/users/{id}/delete",
+            get(users::delete_get).post(users::delete_post),
         )
-        .mount("/static", FileServer::from("templates/static"))
-        .attach(Template::fairing())
-        .attach(DbConn::fairing())
-        .attach(AdHoc::on_ignite("Run Migrations", run_migrations))
-        .manage(Arc::new(JobManager::new()))
+        .route_layer(middleware::from_extractor::<users::RequireAdmin>());
+
+    Router::new()
+        // `GET /` goes to `root`
+        .route("/", get(root))
+        .route("/setup", get(users::setup_get).post(users::setup_post))
+        .route("/login", get(users::login_get).post(users::login_post))
+        .route("/logout", post(users::logout_post))
+        .route(
+            "/static/style.css",
+            get((
+                [(
+                    header::CONTENT_TYPE,
+                    HeaderValue::from_static(mime::TEXT_CSS_UTF_8.as_ref()),
+                )],
+                include_bytes!("../assets/static/style.css"),
+            )),
+        )
+        .route(
+            "/static/script.js",
+            get((
+                [(
+                    header::CONTENT_TYPE,
+                    HeaderValue::from_static(mime::APPLICATION_JAVASCRIPT_UTF_8.as_ref()),
+                )],
+                include_bytes!("../assets/static/script.js"),
+            )),
+        )
+        .merge(admin_routes)
 }
 
-async fn run_migrations(rocket: Rocket<Build>) -> Rocket<Build> {
-    use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
-
-    const MIGRATIONS: EmbeddedMigrations = embed_migrations!("migrations");
-
-    DbConn::get_one(&rocket)
-        .await
-        .expect("database connection")
-        .run(|conn| {
-            conn.run_pending_migrations(MIGRATIONS)
-                .expect("diesel migrations");
+async fn root(State(state): State<AppState>, current_user: users::CurrentUser) -> Html<String> {
+    let template = state
+        .jinja
+        .get_template("home.html")
+        .expect("template is loaded");
+    let rendered = template
+        .render(&Home {
+            is_admin: current_user.is_admin,
         })
-        .await;
-
-    rocket
-}
-
-#[derive(Serialize)]
-pub struct Index {
-    flash: Option<(String, String)>,
-    disks: Vec<Disk>,
-}
-
-#[get("/")]
-async fn index(flash: Option<FlashMessage<'_>>) -> Template {
-    let disks = Disk::list().await;
-
-    let index = match disks {
-        Ok(disks) => Index {
-            flash: flash.map(FlashMessage::into_inner),
-            disks,
-        },
-        Err(err) => Index {
-            flash: Some(("error".into(), format!("Error listing disks: {}", err))),
-            disks: Vec::new(),
-        },
-    };
-
-    Template::render("index", &index)
-}
-
-#[derive(Serialize)]
-pub struct Smart {
-    flash: Option<(String, String)>,
-    smart: Option<SmartCtl>,
-}
-
-#[get("/smart/<device>")]
-async fn smart(device: String, flash: Option<FlashMessage<'_>>) -> Template {
-    let smart_data = SmartCtl::get(&device).await;
-
-    let smart = match smart_data {
-        Ok(smart) => Smart {
-            flash: flash.map(FlashMessage::into_inner),
-            smart: Some(smart),
-        },
-        Err(_err) => Smart {
-            flash: Some(("error".into(), _err.to_string())),
-            smart: None,
-        },
-    };
-
-    Template::render("smart", &smart)
-}
-
-#[derive(Serialize)]
-struct Jobs {
-    running_jobs: Vec<JobInfo>,
-    finished_jobs: Vec<JobInfo>,
-}
-
-#[get("/jobs")]
-async fn job_list(manager: &State<Arc<JobManager>>, conn: DbConn) -> Template {
-    let jobs = Jobs {
-        running_jobs: manager.list_running_jobs().await,
-        finished_jobs: manager.list_finished_jobs(&conn).await.unwrap(),
-    };
-
-    Template::render("jobs", &jobs)
-}
-
-#[derive(Serialize)]
-struct EraseRequestData {
-    disk: Option<Disk>,
-    timestamp: u64,
-    requires_unfreeze: bool,
-    flash: Option<(String, String)>,
-}
-
-#[get("/secure_erase/<device>")]
-async fn secure_erase_request(device: String, flash: Option<FlashMessage<'_>>) -> Template {
-    let disks: Result<Vec<Disk>, String> = Disk::list().await.map_err(|err| format!("{:?}", err));
-    match disks {
-        Ok(disks) => {
-            if let Some(disk) = disks.into_iter().find(|disk| disk.device == device) {
-                let requires_unfreeze = match disk.erase_type {
-                    EraseType::AtaSecureErase | EraseType::AtaEnhancedSecureErase => {
-                        Hdparm::get_for_disk(&device)
-                            .await
-                            .map_err(|err| format!("{:?}", err))
-                            .map(|hdparm| hdparm.frozen)
-                    }
-                    EraseType::BlockOverride => Ok(false),
-                    _ => Err(
-                        "Secure Erase not yet supported for this disk type or connection"
-                            .to_string(),
-                    ),
-                };
-
-                let mut request = EraseRequestData {
-                    disk: Some(disk),
-                    timestamp: SystemTime::now()
-                        .duration_since(UNIX_EPOCH)
-                        .map(|time| time.as_secs())
-                        .unwrap_or(0),
-                    requires_unfreeze: false,
-                    flash: flash.map(FlashMessage::into_inner),
-                };
-
-                match requires_unfreeze {
-                    Ok(requires_unfreeze) => {
-                        request.requires_unfreeze = requires_unfreeze;
-                    }
-                    Err(err) => {
-                        request.flash = Some(("error".to_string(), err));
-                    }
-                }
-
-                Template::render("secure_erase", &request)
-            } else {
-                let err = EraseRequestData {
-                    disk: None,
-                    timestamp: 0,
-                    requires_unfreeze: false,
-                    flash: Some(("error".to_string(), format!("Disk {} not found", device))),
-                };
-                Template::render("secure_erase", &err)
-            }
-        }
-        Err(err) => {
-            let err = EraseRequestData {
-                disk: None,
-                timestamp: 0,
-                requires_unfreeze: false,
-                flash: Some(("error".to_string(), err)),
-            };
-            Template::render("secure_erase", &err)
-        }
-    }
-}
-
-#[derive(FromForm)]
-struct ConfirmErase {
-    serial: String,
-    timestamp: u64,
-}
-
-#[post("/secure_erase/<device>", data = "<erase_form>")]
-async fn secure_erase_confirm(
-    device: String,
-    erase_form: Form<ConfirmErase>,
-    job_manager: &State<Arc<JobManager>>,
-    conn: DbConn,
-) -> Flash<Redirect> {
-    let erase_form = erase_form.into_inner();
-    let on_error = Redirect::to(format!("/secure_erase/{}", device));
-
-    let disks = Disk::list().await.map_err(|err| format!("{:?}", err));
-    let disks = match disks {
-        Ok(disks) => disks,
-        Err(err) => return Flash::error(on_error, err.to_string()),
-    };
-
-    let now: u64 = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_secs();
-
-    if now - erase_form.timestamp > 60 {
-        return Flash::error(on_error, "Confirm Timeout, try again!");
-    }
-
-    if let Some(disk) = disks.into_iter().find(|disk| disk.device == device) {
-        if disk.serial.as_ref() != Some(&erase_form.serial) {
-            return Flash::error(
-                on_error,
-                "Serial number of Disk changed. Did you unplug the disk?",
-            );
-        }
-
-        let job = EraseJob {
-            device,
-            connection_type: disk.connection_type,
-            disk_type: disk.disk_type,
-            erase_type: disk.erase_type,
-            model: disk.model,
-            serial: erase_form.serial,
-        };
-
-        let id = match job_manager.run_job(job, conn).await {
-            Ok(id) => id,
-            Err(err) => return Flash::error(on_error, format!("{err}")),
-        };
-
-        Flash::success(Redirect::to(format!("/jobs/{id}")), "Secure Erase started!")
-    } else {
-        Flash::error(on_error, "Disk not found!")
-    }
-}
-
-#[post("/sleep")]
-async fn sleep() {
-    tokio::process::Command::new("rtcwake")
-        .arg("-m")
-        .arg("mem")
-        .arg("-s")
-        .arg("5")
-        .status()
-        .await
         .unwrap();
-}
-
-#[derive(Serialize)]
-struct JobDetail {
-    job: JobInfo,
-    flash: Option<(String, String)>,
-}
-
-#[get("/jobs/<id>")]
-async fn job_detail(
-    job_manager: &State<Arc<JobManager>>,
-    id: String,
-    conn: DbConn,
-    flash: Option<FlashMessage<'_>>,
-) -> Template {
-    let job = job_manager.inner().get_job_info(id, &conn).await.unwrap();
-
-    let detail = JobDetail {
-        job,
-        flash: flash.map(FlashMessage::into_inner),
-    };
-
-    Template::render("job_detail", &detail)
-}
-
-#[get("/jobs/<id>/log")]
-async fn job_log(
-    ws: rocket_ws::WebSocket,
-    job_manager: &State<Arc<JobManager>>,
-    id: String,
-    conn: DbConn,
-) -> rocket_ws::Channel<'static> {
-    let (current, subscriber) = job_manager.subscribe_log(id, &conn).await.unwrap();
-
-    ws.channel(move |mut stream| {
-        Box::pin(async move {
-            stream.send(rocket_ws::Message::Text(current)).await?;
-
-            if let Some(mut subscriber) = subscriber {
-                while let Ok(log) = subscriber.recv().await {
-                    stream.send(rocket_ws::Message::Text(log)).await?;
-                }
-            }
-
-            Ok(())
-        })
-    })
+    Html(rendered)
 }

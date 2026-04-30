@@ -1,0 +1,42 @@
+{% extends 'layout.html' %} {% block nav %}{% include "nav_auth_spacer.html"
+%}{% endblock nav %} {% block page_class %} auth-page{% endblock page_class %}
+{% block card_class %} auth-card{% endblock card_class %} {% block title
+%}Initial Setup{% endblock title %} {% block content %}
+<p class="muted">Create the first admin user.</p>
+{% if has_error and error_message %}
+<p class="muted">{{ error_message }}</p>
+{% endif %}
+<form class="plan-form" method="post" action="/setup">
+    <p>
+        <label for="setup_name">Username</label><br />
+        <input id="setup_name" name="name" type="text" required />
+    </p>
+    <p>
+        <label for="setup_password">Password</label><br />
+        <input
+            id="setup_password"
+            name="password"
+            type="password"
+            minlength="8"
+            required
+        />
+    </p>
+    <p>
+        <label for="setup_password_confirm">Confirm Password</label><br />
+        <input
+            id="setup_password_confirm"
+            name="password_confirm"
+            type="password"
+            minlength="8"
+            required
+        />
+    </p>
+    <div class="toolbar">
+        <input
+            class="btn btn-primary"
+            type="submit"
+            value="Create Admin User"
+        />
+    </div>
+</form>
+{% endblock %}

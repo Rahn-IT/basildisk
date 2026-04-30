@@ -1,0 +1,28 @@
+{% extends 'layout.html' %} {% block nav %}{% include "nav_auth_spacer.html"
+%}{% endblock nav %} {% block page_class %} auth-page{% endblock page_class %}
+{% block card_class %} auth-card{% endblock card_class %} {% block title
+%}Login{% endblock title %} {% block content %}
+<p class="muted">Sign in to continue.</p>
+{% if has_error and error_message %}
+<p class="muted">{{ error_message }}</p>
+{% endif %}
+<form class="plan-form" method="post" action="/login">
+    <p>
+        <label for="login_name">Username</label><br />
+        <input id="login_name" name="name" type="text" required />
+    </p>
+    <p>
+        <label for="login_password">Password</label><br />
+        <input
+            id="login_password"
+            name="password"
+            type="password"
+            minlength="8"
+            required
+        />
+    </p>
+    <div class="toolbar">
+        <input class="btn btn-primary" type="submit" value="Login" />
+    </div>
+</form>
+{% endblock %}

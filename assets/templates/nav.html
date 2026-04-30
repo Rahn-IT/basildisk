@@ -1,0 +1,15 @@
+<nav class="top-nav">
+    <div class="top-nav-inner">
+        <div class="nav-left">
+            <a class="nav-link" href="/">Home</a>
+            {% if is_admin %}
+            <a class="nav-link" href="/users">Users</a>
+            {% endif %}
+        </div>
+        <div class="nav-right">
+            <form method="post" action="/logout">
+                <input class="btn" type="submit" value="Logout" />
+            </form>
+        </div>
+    </div>
+</nav>

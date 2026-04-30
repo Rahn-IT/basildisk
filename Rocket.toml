@@ -1,5 +1,0 @@
-[default]
-template_dir = "templates"
-
-[default.databases.sqlite_database]
-url = "db/db.sqlite"

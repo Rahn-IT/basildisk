@@ -1,0 +1,30 @@
+<!doctype html>
+<html>
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>Rust Axum Template</title>
+        <link rel="stylesheet" href="/static/style.css" />
+        <script src="/static/script.js"></script>
+        {% block head %}{% endblock head %}
+    </head>
+    <body>
+        {% block nav %}{% include "nav.html" %}{% endblock nav %}
+        <main class="page{% block page_class %}{% endblock page_class %}">
+            <section
+                class="content-card{% block card_class %}{% endblock card_class %}"
+            >
+                <h1 class="page-title">
+                    {% block title %}{% endblock title %}
+                </h1>
+                <div class="toolbar top-toolbar">
+                    {% block top_actions %}{% endblock top_actions %}
+                </div>
+                <div>{% block content %}{% endblock content %}</div>
+                <div class="toolbar bottom-toolbar">
+                    {% block bottom_actions %}{% endblock bottom_actions %}
+                </div>
+            </section>
+        </main>
+    </body>
+</html>
