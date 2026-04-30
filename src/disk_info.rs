@@ -7,6 +7,7 @@ use tokio::task::JoinSet;
 use crate::{
     erase::{EraseType, GetEraseTypeError},
     lsblk::{LsBlk, LsBlkError},
+    mount,
     smartctl::{SmartCtl, SmartCtlError},
 };
 
@@ -38,7 +39,12 @@ pub struct Partition {
     pub usage_percent: u8,
     pub depth_class: String,
     pub is_mounted: bool,
+    pub mount_points: Vec<String>,
     pub mount_points_display: String,
+    pub can_mount: bool,
+    pub can_unmount: bool,
+    pub mount_disabled_reason: String,
+    pub unmount_disabled_reason: String,
 }
 
 #[derive(Serialize, PartialEq, Eq, Clone, Copy)]
@@ -169,24 +175,49 @@ impl Disk {
                 let partitions = lsblk_info
                     .partitions()
                     .into_iter()
-                    .map(|partition| Partition {
-                        name: partition.name,
-                        kind: partition.kind,
-                        fs_type: partition.fs_type,
-                        size_formated: Self::format_size(partition.size),
-                        has_usage: partition.fs_used.is_some(),
-                        usage_display: Self::format_usage(
-                            partition.fs_used,
-                            partition.fs_available,
-                        ),
-                        usage_percent: Self::usage_percent(
-                            partition.fs_use_percent.as_deref(),
-                            partition.fs_used,
-                            partition.fs_available,
-                        ),
-                        depth_class: format!("partition-depth-{}", partition.depth.min(4)),
-                        is_mounted: partition.is_mounted,
-                        mount_points_display: partition.mount_points_display,
+                    .map(|partition| {
+                        let supported = partition
+                            .fs_type
+                            .as_deref()
+                            .is_some_and(mount::is_supported_filesystem);
+                        let can_mount = supported && !partition.is_mounted;
+                        let can_unmount = partition.is_mounted
+                            && mount::mount_point_under_mnt(&partition.mount_points).is_some();
+                        let mount_disabled_reason = if supported {
+                            "Partition is already mounted.".to_string()
+                        } else {
+                            "Unsupported filesystem.".to_string()
+                        };
+                        let unmount_disabled_reason = if partition.is_mounted {
+                            "Partition is not mounted under /mnt.".to_string()
+                        } else {
+                            "Partition is not mounted.".to_string()
+                        };
+
+                        Partition {
+                            name: partition.name,
+                            kind: partition.kind,
+                            fs_type: partition.fs_type,
+                            size_formated: Self::format_size(partition.size),
+                            has_usage: partition.fs_used.is_some(),
+                            usage_display: Self::format_usage(
+                                partition.fs_used,
+                                partition.fs_available,
+                            ),
+                            usage_percent: Self::usage_percent(
+                                partition.fs_use_percent.as_deref(),
+                                partition.fs_used,
+                                partition.fs_available,
+                            ),
+                            depth_class: format!("partition-depth-{}", partition.depth.min(4)),
+                            is_mounted: partition.is_mounted,
+                            mount_points: partition.mount_points,
+                            mount_points_display: partition.mount_points_display,
+                            can_mount,
+                            can_unmount,
+                            mount_disabled_reason,
+                            unmount_disabled_reason,
+                        }
                     })
                     .collect();
                 let disk = Disk {

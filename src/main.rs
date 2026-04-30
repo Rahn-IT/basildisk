@@ -24,6 +24,7 @@ mod erase;
 pub mod error;
 mod jobs;
 mod lsblk;
+mod mount;
 mod smartctl;
 mod users;
 
@@ -31,6 +32,7 @@ use disk_info::Disk;
 use erase::{EraseJob, EraseType, hdparm::Hdparm};
 use error::AppError;
 use jobs::{JobInfo, JobManager, JobPage};
+use mount::{mount_partition, unmount_partition};
 use smartctl::SmartCtl;
 
 const DB_PATH: &str = "./db/db.sqlite";
@@ -150,6 +152,8 @@ fn router() -> Router<AppState> {
         .route("/jobs", get(jobs_index))
         .route("/jobs/{id}", get(job_detail))
         .route("/jobs/{id}/log", get(job_log))
+        .route("/partitions/{device}/mount", post(partition_mount_post))
+        .route("/partitions/{device}/unmount", post(partition_unmount_post))
         .route("/setup", get(users::setup_get).post(users::setup_post))
         .route("/login", get(users::login_get).post(users::login_post))
         .route("/logout", post(users::logout_post))
@@ -408,12 +412,43 @@ async fn job_log(
         .into_response())
 }
 
+async fn partition_mount_post(AxumPath(device): AxumPath<String>) -> Result<Redirect, AppError> {
+    let partition = find_partition(&device).await?;
+    let fs_type = partition
+        .fs_type
+        .as_deref()
+        .ok_or_else(|| AppError::conflict("Partition does not report a filesystem type."))?;
+
+    mount_partition(&device, fs_type).await?;
+
+    Ok(Redirect::to("/"))
+}
+
+async fn partition_unmount_post(AxumPath(device): AxumPath<String>) -> Result<Redirect, AppError> {
+    let partition = find_partition(&device).await?;
+
+    unmount_partition(&partition.mount_points).await?;
+
+    Ok(Redirect::to("/"))
+}
+
 async fn find_disk(device: &str) -> Result<Disk, AppError> {
     Disk::list()
         .await?
         .into_iter()
         .find(|disk| disk.device == device)
         .ok_or_else(|| AppError::not_found_for("Disk", format!("No disk exists for {device}")))
+}
+
+async fn find_partition(device: &str) -> Result<disk_info::Partition, AppError> {
+    Disk::list()
+        .await?
+        .into_iter()
+        .flat_map(|disk| disk.partitions)
+        .find(|partition| partition.name == device)
+        .ok_or_else(|| {
+            AppError::not_found_for("Partition", format!("No partition exists for {device}"))
+        })
 }
 
 fn unix_timestamp() -> u64 {

@@ -544,6 +544,18 @@ input[type="submit"].btn {
     overflow-wrap: anywhere;
 }
 
+.partition-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.4rem;
+    flex-wrap: wrap;
+    margin-top: 0.45rem;
+}
+
+.partition-actions form {
+    margin: 0;
+}
+
 .section-title {
     margin: 1.4rem 0 0.75rem;
     font-size: 1.05rem;

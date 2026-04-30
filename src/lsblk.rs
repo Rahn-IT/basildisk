@@ -91,6 +91,7 @@ impl LsBlkDisk {
     fn collect_partitions(&self, depth: usize, partitions: &mut Vec<LsBlkPartition>) {
         for child in &self.children {
             let mount_points = child.direct_mount_points();
+            let mount_points_display = mount_points.join(", ");
             partitions.push(LsBlkPartition {
                 name: child.name.clone(),
                 kind: child.kind.clone(),
@@ -101,7 +102,8 @@ impl LsBlkDisk {
                 size: child.size,
                 depth,
                 is_mounted: !mount_points.is_empty(),
-                mount_points_display: mount_points.join(", "),
+                mount_points,
+                mount_points_display,
             });
             child.collect_partitions(depth + 1, partitions);
         }
@@ -132,5 +134,6 @@ pub struct LsBlkPartition {
     pub size: u64,
     pub depth: usize,
     pub is_mounted: bool,
+    pub mount_points: Vec<String>,
     pub mount_points_display: String,
 }
