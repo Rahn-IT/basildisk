@@ -1,9 +1,5 @@
-{% extends 'layout.html' %}
-
-{% block title %}Disks{% endblock %}
-
-{% block content %}
-{% if error_message %}
+{% extends 'layout.html' %} {% block title %}Disks{% endblock %} {% block
+content %} {% if error_message %}
 <div class="notice notice-error">{{ error_message }}</div>
 {% endif %}
 
@@ -50,16 +46,22 @@
         {% if disk.partitions %}
         <div class="partition-list">
             {% for partition in disk.partitions %}
-            <section class="partition-card {{ partition.depth_class }}{% if partition.is_mounted %} is-mounted{% endif %}">
+            <section
+                class="partition-card {{ partition.depth_class }}{% if partition.is_mounted %} is-mounted{% endif %}"
+            >
                 <div>
                     <h3>{{ partition.name }}</h3>
                     <p>
-                        {{ partition.kind }} · {{ partition.size_formated }}
-                        {% if partition.fs_type %} · {{ partition.fs_type }}{% endif %}
+                        {{ partition.kind }} · {{ partition.size_formated }} {%
+                        if partition.fs_type %} · {{ partition.fs_type }}{%
+                        endif %}
                     </p>
                     {% if partition.has_usage %}
                     <div class="usage">
-                        <div class="usage-bar" style="--usage: {{ partition.usage_percent }}%">
+                        <div
+                            class="usage-bar"
+                            style="--usage: {{ partition.usage_percent }}%"
+                        >
                             <span></span>
                         </div>
                         <span>{{ partition.usage_display }}</span>
@@ -68,17 +70,39 @@
                 </div>
                 <div class="partition-mount">
                     <span>Mount point</span>
-                    <strong>{% if partition.is_mounted %}{{ partition.mount_points_display }}{% else %}Not mounted{% endif %}</strong>
+                    <strong
+                        >{% if partition.is_mounted %}{{
+                        partition.mount_points_display }}{% else %}Not mounted{%
+                        endif %}</strong
+                    >
                     <div class="partition-actions">
-                        {% if partition.can_mount %}
-                        <form method="post" action="/partitions/{{ partition.name }}/mount">
-                            <input class="btn partition-action-btn" type="submit" value="Mount" />
+                        {% if partition.can_browse %}
+                        <a
+                            class="btn partition-action-btn"
+                            href="{{ partition.browse_url }}"
+                            >Browse</a
+                        >
+                        {% endif %} {% if partition.can_mount %}
+                        <form
+                            method="post"
+                            action="/partitions/{{ partition.name }}/mount"
+                        >
+                            <input
+                                class="btn partition-action-btn"
+                                type="submit"
+                                value="Mount"
+                            />
                         </form>
-                        {% endif %}
-
-                        {% if partition.can_unmount %}
-                        <form method="post" action="/partitions/{{ partition.name }}/unmount">
-                            <input class="btn partition-action-btn" type="submit" value="Unmount" />
+                        {% endif %} {% if partition.can_unmount %}
+                        <form
+                            method="post"
+                            action="/partitions/{{ partition.name }}/unmount"
+                        >
+                            <input
+                                class="btn partition-action-btn"
+                                type="submit"
+                                value="Unmount"
+                            />
                         </form>
                         {% endif %}
                     </div>
@@ -90,21 +114,27 @@
 
         <div class="form-actions">
             <a class="btn" href="/smart/{{ disk.device }}">SMART</a>
-            {% if disk.erase_type != "None" %}
-            {% if disk.is_mounted %}
-            <span class="btn btn-disabled" title="Unmount this disk before secure erase">Secure Erase</span>
+            {% if disk.erase_type != "None" %} {% if disk.is_mounted %}
+            <span
+                class="btn btn-disabled"
+                title="Unmount this disk before secure erase"
+                >Secure Erase</span
+            >
             {% elif not disk.erase_can_run %}
-            <span class="btn btn-disabled" title="This erase method is detected but not implemented yet">Secure Erase</span>
+            <span
+                class="btn btn-disabled"
+                title="This erase method is detected but not implemented yet"
+                >Secure Erase</span
+            >
             {% else %}
-            <a class="btn btn-danger" href="/erase/{{ disk.device }}">Secure Erase</a>
-            {% endif %}
-            {% endif %}
+            <a class="btn btn-danger" href="/erase/{{ disk.device }}"
+                >Secure Erase</a
+            >
+            {% endif %} {% endif %}
         </div>
     </article>
-    {% else %}
-    {% if not error_message %}
+    {% else %} {% if not error_message %}
     <p class="empty-state">No disks found.</p>
-    {% endif %}
-    {% endfor %}
+    {% endif %} {% endfor %}
 </div>
 {% endblock %}

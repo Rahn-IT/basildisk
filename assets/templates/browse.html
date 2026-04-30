@@ -1,0 +1,27 @@
+{% extends 'layout.html' %}
+
+{% block title %}Browse {{ device }}{% endblock %}
+
+{% block content %}
+<div class="browse-path">{{ path }}</div>
+
+{% if parent_url %}
+<div class="form-actions">
+    <a class="btn" href="{{ parent_url }}">Up</a>
+</div>
+{% endif %}
+
+<div class="browse-list">
+    {% for entry in entries %}
+    <a class="browse-row" href="{{ entry.href }}">
+        <div>
+            <strong>{{ entry.name }}</strong>
+            <small>{{ entry.kind }}</small>
+        </div>
+        <span>{{ entry.size_display }}</span>
+    </a>
+    {% else %}
+    <p class="empty-state">This folder is empty.</p>
+    {% endfor %}
+</div>
+{% endblock %}

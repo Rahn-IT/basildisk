@@ -43,6 +43,8 @@ pub struct Partition {
     pub mount_points_display: String,
     pub can_mount: bool,
     pub can_unmount: bool,
+    pub can_browse: bool,
+    pub browse_url: String,
     pub mount_disabled_reason: String,
     pub unmount_disabled_reason: String,
 }
@@ -183,6 +185,8 @@ impl Disk {
                         let can_mount = supported && !partition.is_mounted;
                         let can_unmount = partition.is_mounted
                             && mount::mount_point_under_mnt(&partition.mount_points).is_some();
+                        let can_browse = partition.is_mounted
+                            && mount::mount_point_under_mnt(&partition.mount_points).is_some();
                         let mount_disabled_reason = if supported {
                             "Partition is already mounted.".to_string()
                         } else {
@@ -193,6 +197,8 @@ impl Disk {
                         } else {
                             "Partition is not mounted.".to_string()
                         };
+
+                        let browse_url = format!("/browse/{}", partition.name);
 
                         Partition {
                             name: partition.name,
@@ -215,6 +221,8 @@ impl Disk {
                             mount_points_display: partition.mount_points_display,
                             can_mount,
                             can_unmount,
+                            can_browse,
+                            browse_url,
                             mount_disabled_reason,
                             unmount_disabled_reason,
                         }

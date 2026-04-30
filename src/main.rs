@@ -19,6 +19,7 @@ use axum_extra::extract::Form;
 use serde::{Deserialize, Serialize};
 use sqlx::{Sqlite, SqlitePool, migrate::MigrateDatabase};
 
+mod browse;
 mod disk_info;
 mod erase;
 pub mod error;
@@ -28,6 +29,7 @@ mod mount;
 mod smartctl;
 mod users;
 
+use browse::BrowseView;
 use disk_info::Disk;
 use erase::{EraseJob, EraseType, hdparm::Hdparm};
 use error::AppError;
@@ -152,6 +154,8 @@ fn router() -> Router<AppState> {
         .route("/jobs", get(jobs_index))
         .route("/jobs/{id}", get(job_detail))
         .route("/jobs/{id}/log", get(job_log))
+        .route("/browse/{device}", get(browse_root))
+        .route("/browse/{device}/{*path}", get(browse_path))
         .route("/partitions/{device}/mount", post(partition_mount_post))
         .route("/partitions/{device}/unmount", post(partition_unmount_post))
         .route("/setup", get(users::setup_get).post(users::setup_post))
@@ -430,6 +434,37 @@ async fn partition_unmount_post(AxumPath(device): AxumPath<String>) -> Result<Re
     unmount_partition(&partition.mount_points).await?;
 
     Ok(Redirect::to("/"))
+}
+
+async fn browse_root(
+    State(state): State<AppState>,
+    current_user: users::CurrentUser,
+    AxumPath(device): AxumPath<String>,
+) -> Result<Html<String>, AppError> {
+    render_browse(&state, &device, "", current_user.is_admin).await
+}
+
+async fn browse_path(
+    State(state): State<AppState>,
+    current_user: users::CurrentUser,
+    AxumPath((device, path)): AxumPath<(String, String)>,
+) -> Result<Html<String>, AppError> {
+    render_browse(&state, &device, &path, current_user.is_admin).await
+}
+
+async fn render_browse(
+    state: &AppState,
+    device: &str,
+    path: &str,
+    is_admin: bool,
+) -> Result<Html<String>, AppError> {
+    let view: BrowseView = browse::list(device, path, is_admin).await?;
+    let template = state
+        .jinja
+        .get_template("browse.html")
+        .expect("template is loaded");
+    let rendered = template.render(view)?;
+    Ok(Html(rendered))
 }
 
 async fn find_disk(device: &str) -> Result<Disk, AppError> {
