@@ -19,7 +19,7 @@ impl LsBlk {
     pub async fn list() -> Result<Vec<LsBlkDisk>, LsBlkError> {
         let output = Command::new("lsblk")
             .arg("-o")
-            .arg("HOTPLUG,MODEL,NAME,ROTA,SERIAL,SIZE,TRAN,TYPE,MOUNTPOINTS")
+            .arg("HOTPLUG,MODEL,NAME,ROTA,SERIAL,SIZE,TRAN,TYPE,FSTYPE,FSUSED,FSAVAIL,FSUSE%,MOUNTPOINTS")
             .arg("--bytes")
             .arg("--json")
             .output()
@@ -47,6 +47,11 @@ pub struct LsBlkDisk {
     pub tran: Option<String>,
     #[serde(default, rename = "type")]
     pub kind: String,
+    pub fstype: Option<String>,
+    pub fsused: Option<u64>,
+    pub fsavail: Option<u64>,
+    #[serde(rename = "fsuse%")]
+    pub fsuse_percent: Option<String>,
     #[serde(default)]
     pub mountpoints: Vec<Option<String>>,
     #[serde(default)]
@@ -89,6 +94,10 @@ impl LsBlkDisk {
             partitions.push(LsBlkPartition {
                 name: child.name.clone(),
                 kind: child.kind.clone(),
+                fs_type: child.fstype.clone(),
+                fs_used: child.fsused,
+                fs_available: child.fsavail,
+                fs_use_percent: child.fsuse_percent.clone(),
                 size: child.size,
                 depth,
                 is_mounted: !mount_points.is_empty(),
@@ -116,6 +125,10 @@ impl LsBlkDisk {
 pub struct LsBlkPartition {
     pub name: String,
     pub kind: String,
+    pub fs_type: Option<String>,
+    pub fs_used: Option<u64>,
+    pub fs_available: Option<u64>,
+    pub fs_use_percent: Option<String>,
     pub size: u64,
     pub depth: usize,
     pub is_mounted: bool,

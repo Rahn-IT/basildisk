@@ -30,7 +30,11 @@ pub struct Disk {
 pub struct Partition {
     pub name: String,
     pub kind: String,
+    pub fs_type: Option<String>,
     pub size_formated: String,
+    pub has_usage: bool,
+    pub usage_display: String,
+    pub usage_percent: u8,
     pub depth_class: String,
     pub is_mounted: bool,
     pub mount_points_display: String,
@@ -167,7 +171,18 @@ impl Disk {
                     .map(|partition| Partition {
                         name: partition.name,
                         kind: partition.kind,
+                        fs_type: partition.fs_type,
                         size_formated: Self::format_size(partition.size),
+                        has_usage: partition.fs_used.is_some(),
+                        usage_display: Self::format_usage(
+                            partition.fs_used,
+                            partition.fs_available,
+                        ),
+                        usage_percent: Self::usage_percent(
+                            partition.fs_use_percent.as_deref(),
+                            partition.fs_used,
+                            partition.fs_available,
+                        ),
                         depth_class: format!("partition-depth-{}", partition.depth.min(4)),
                         is_mounted: partition.is_mounted,
                         mount_points_display: partition.mount_points_display,
@@ -227,5 +242,40 @@ impl Disk {
         }
 
         size_formatted
+    }
+
+    fn format_usage(used: Option<u64>, available: Option<u64>) -> String {
+        let Some(used) = used else {
+            return String::new();
+        };
+
+        if let Some(available) = available {
+            format!(
+                "{} used / {} total",
+                Self::format_size(used),
+                Self::format_size(used.saturating_add(available))
+            )
+        } else {
+            format!("{} used", Self::format_size(used))
+        }
+    }
+
+    fn usage_percent(fsuse_percent: Option<&str>, used: Option<u64>, available: Option<u64>) -> u8 {
+        if let Some(percent) =
+            fsuse_percent.and_then(|value| value.trim().trim_end_matches('%').parse::<u8>().ok())
+        {
+            return percent.min(100);
+        }
+
+        let (Some(used), Some(available)) = (used, available) else {
+            return 0;
+        };
+
+        let total = used.saturating_add(available);
+        if total == 0 {
+            0
+        } else {
+            ((used.saturating_mul(100)) / total).min(100) as u8
+        }
     }
 }

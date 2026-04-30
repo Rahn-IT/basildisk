@@ -484,8 +484,8 @@ input[type="submit"].btn {
 }
 
 .partition-card.is-mounted {
-    border-color: var(--button-active-text);
-    background: var(--button-active-bg);
+    border-color: var(--button-line);
+    background: color-mix(in srgb, var(--button-active-bg) 38%, var(--card-2) 62%);
 }
 
 .partition-card h3 {
@@ -497,6 +497,33 @@ input[type="submit"].btn {
     margin: 0.2rem 0 0;
     color: var(--muted);
     font-size: 0.88rem;
+}
+
+.usage {
+    display: grid;
+    gap: 0.25rem;
+    margin-top: 0.45rem;
+    max-width: 18rem;
+}
+
+.usage-bar {
+    height: 0.45rem;
+    border-radius: 999px;
+    background: var(--line);
+    overflow: hidden;
+}
+
+.usage-bar span {
+    display: block;
+    width: var(--usage);
+    height: 100%;
+    border-radius: inherit;
+    background: var(--brand);
+}
+
+.usage > span {
+    color: var(--muted);
+    font-size: 0.8rem;
 }
 
 .partition-mount {

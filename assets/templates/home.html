@@ -53,7 +53,18 @@
             <section class="partition-card {{ partition.depth_class }}{% if partition.is_mounted %} is-mounted{% endif %}">
                 <div>
                     <h3>{{ partition.name }}</h3>
-                    <p>{{ partition.kind }} · {{ partition.size_formated }}</p>
+                    <p>
+                        {{ partition.kind }} · {{ partition.size_formated }}
+                        {% if partition.fs_type %} · {{ partition.fs_type }}{% endif %}
+                    </p>
+                    {% if partition.has_usage %}
+                    <div class="usage">
+                        <div class="usage-bar" style="--usage: {{ partition.usage_percent }}%">
+                            <span></span>
+                        </div>
+                        <span>{{ partition.usage_display }}</span>
+                    </div>
+                    {% endif %}
                 </div>
                 <div class="partition-mount">
                     <span>Mount point</span>
