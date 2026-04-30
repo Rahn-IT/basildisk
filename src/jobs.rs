@@ -1,7 +1,13 @@
-use std::{collections::BTreeMap, future::Future, sync::Arc};
+use std::{
+    collections::BTreeMap,
+    future::Future,
+    sync::Arc,
+    time::{SystemTime, UNIX_EPOCH},
+};
 
 use serde::Serialize;
 use sqlx::SqlitePool;
+use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 use tokio::{
     sync::{TryLockError, broadcast},
     task,
@@ -233,7 +239,12 @@ impl JobManager {
 
         let (send, recv) = broadcast::channel(3);
 
-        let log = Arc::new(std::sync::Mutex::new(BANNER.to_string()));
+        let started_at = unix_now();
+        let log = Arc::new(std::sync::Mutex::new(format!(
+            "{}Started at: {}\n",
+            BANNER,
+            format_unix_timestamp(started_at)
+        )));
 
         let rjob = RunningJob {
             info: JobInfo {
@@ -265,6 +276,7 @@ impl JobManager {
             }
 
             let result = job_handle.await;
+            let ended_at = unix_now();
 
             match result {
                 Err(err) => log
@@ -277,6 +289,10 @@ impl JobManager {
                     .push_str(&format!("Job failed: {err}\n")),
                 Ok(Ok(_)) => {}
             }
+            log.lock().unwrap().push_str(&format!(
+                "Finished at: {}\n",
+                format_unix_timestamp(ended_at)
+            ));
 
             let rjob = {
                 let mut running_jobs = self2.running_jobs.lock().unwrap();
@@ -302,6 +318,20 @@ impl JobManager {
 
         Ok(id2)
     }
+}
+
+fn unix_now() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_secs() as i64)
+        .unwrap_or(0)
+}
+
+fn format_unix_timestamp(timestamp: i64) -> String {
+    OffsetDateTime::from_unix_timestamp(timestamp)
+        .ok()
+        .and_then(|datetime| datetime.format(&Rfc3339).ok())
+        .unwrap_or_else(|| timestamp.to_string())
 }
 
 pub trait Job: Send + Sync + 'static {
