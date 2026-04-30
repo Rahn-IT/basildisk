@@ -1,0 +1,29 @@
+{% extends 'layout.html' %}
+
+{% block title %}Jobs{% endblock %}
+
+{% block content %}
+<h2 class="section-title">Running</h2>
+<div class="job-list">
+    {% for job in running_jobs %}
+    <a class="job-row" href="/jobs/{{ job.id }}">
+        <strong>{{ job.name }}</strong>
+        <span>{{ job.disk }}</span>
+    </a>
+    {% else %}
+    <p class="empty-state">No running jobs.</p>
+    {% endfor %}
+</div>
+
+<h2 class="section-title">Finished</h2>
+<div class="job-list">
+    {% for job in finished_jobs %}
+    <a class="job-row" href="/jobs/{{ job.id }}">
+        <strong>{{ job.name }}</strong>
+        <span>{{ job.disk }}</span>
+    </a>
+    {% else %}
+    <p class="empty-state">No finished jobs.</p>
+    {% endfor %}
+</div>
+{% endblock %}

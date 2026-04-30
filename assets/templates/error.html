@@ -1,0 +1,10 @@
+{% extends 'layout.html' %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block content %}
+<div class="notice notice-error">{{ message }}</div>
+<div class="form-actions">
+    <a class="btn" href="{{ button_href }}">{{ button_label }}</a>
+</div>
+{% endblock %}

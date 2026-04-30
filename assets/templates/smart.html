@@ -1,0 +1,88 @@
+{% extends 'layout.html' %}
+
+{% block title %}SMART{% endblock %}
+
+{% block content %}
+<dl class="metadata-grid">
+    <div>
+        <dt>Device</dt>
+        <dd>{% if smart.device %}{{ smart.device.name }}{% else %}Unknown{% endif %}</dd>
+    </div>
+    <div>
+        <dt>Protocol</dt>
+        <dd>{% if smart.device %}{{ smart.device.protocol }}{% else %}Unknown{% endif %}</dd>
+    </div>
+    <div>
+        <dt>Model</dt>
+        <dd>{{ smart.model_name }}</dd>
+    </div>
+    <div>
+        <dt>Family</dt>
+        <dd>{{ smart.model_family }}</dd>
+    </div>
+    <div>
+        <dt>Serial</dt>
+        <dd>{{ smart.serial_number }}</dd>
+    </div>
+    <div>
+        <dt>Firmware</dt>
+        <dd>{{ smart.firmware_version }}</dd>
+    </div>
+</dl>
+
+{% if smart.nvme_smart_health_information_log %}
+<h2 class="section-title">NVMe Health</h2>
+<dl class="metadata-grid">
+    <div>
+        <dt>Temperature</dt>
+        <dd>{{ smart.nvme_smart_health_information_log.temperature }} K</dd>
+    </div>
+    <div>
+        <dt>Available spare</dt>
+        <dd>{{ smart.nvme_smart_health_information_log.available_spare }}%</dd>
+    </div>
+    <div>
+        <dt>Used</dt>
+        <dd>{{ smart.nvme_smart_health_information_log.percentage_used }}%</dd>
+    </div>
+    <div>
+        <dt>Power on hours</dt>
+        <dd>{{ smart.nvme_smart_health_information_log.power_on_hours }}</dd>
+    </div>
+    <div>
+        <dt>Unsafe shutdowns</dt>
+        <dd>{{ smart.nvme_smart_health_information_log.unsafe_shutdowns }}</dd>
+    </div>
+    <div>
+        <dt>Media errors</dt>
+        <dd>{{ smart.nvme_smart_health_information_log.media_errors }}</dd>
+    </div>
+</dl>
+{% endif %}
+
+{% if smart.ata_smart_attributes %}
+<h2 class="section-title">ATA Attributes</h2>
+<table class="items-table">
+    <thead>
+        <tr>
+            <th>Name</th>
+            <th>Value</th>
+            <th>Worst</th>
+            <th>Threshold</th>
+            <th>Raw</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for attribute in smart.ata_smart_attributes.table %}
+        <tr>
+            <td>{{ attribute.name }}</td>
+            <td>{{ attribute.value }}</td>
+            <td>{{ attribute.worst }}</td>
+            <td>{{ attribute.thresh }}</td>
+            <td>{{ attribute.raw.string }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endif %}
+{% endblock %}

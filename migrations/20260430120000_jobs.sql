@@ -1,0 +1,8 @@
+CREATE TABLE IF NOT EXISTS jobs (
+    id TEXT PRIMARY KEY NOT NULL,
+    disk TEXT NOT NULL,
+    name TEXT NOT NULL,
+    log TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS jobs_disk_idx ON jobs(disk);

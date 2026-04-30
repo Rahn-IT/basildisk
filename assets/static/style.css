@@ -357,6 +357,134 @@ input[type="submit"].btn {
     line-height: 1.2;
 }
 
+.notice {
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 0.75rem 0.9rem;
+    margin-bottom: 1rem;
+    background: var(--card-2);
+}
+
+.notice-error {
+    border-color: var(--danger-button-line);
+    background: var(--danger-button-bg);
+    color: var(--danger);
+}
+
+.notice-warning {
+    border-color: #d6a84f;
+    background: #fff8e6;
+    color: #785400;
+}
+
+.disk-list,
+.job-list {
+    display: grid;
+    gap: 1rem;
+}
+
+.disk-card {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--card-2);
+    padding: 1rem;
+}
+
+.disk-card-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.disk-card h2 {
+    margin: 0;
+    font-size: 1.15rem;
+}
+
+.disk-card p {
+    margin: 0.25rem 0 0;
+    color: var(--muted);
+}
+
+.status-pill {
+    flex: 0 0 auto;
+    border: 1px solid var(--button-line);
+    border-radius: 999px;
+    padding: 0.25rem 0.55rem;
+    background: var(--button-bg);
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+
+.metadata-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 0.8rem 1rem;
+    margin: 0 0 1rem;
+}
+
+.metadata-grid div {
+    min-width: 0;
+}
+
+.metadata-grid dt {
+    color: var(--muted);
+    font-size: 0.78rem;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+.metadata-grid dd {
+    margin: 0.2rem 0 0;
+    overflow-wrap: anywhere;
+}
+
+.section-title {
+    margin: 1.4rem 0 0.75rem;
+    font-size: 1.05rem;
+}
+
+.empty-state {
+    margin: 0;
+    color: var(--muted);
+}
+
+.job-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 0.8rem 0.9rem;
+    background: var(--card-2);
+    color: var(--text);
+}
+
+.job-row:hover {
+    text-decoration: none;
+    box-shadow: var(--hover-shadow);
+}
+
+.job-row span {
+    color: var(--muted);
+}
+
+.job-log {
+    min-height: 28rem;
+    max-height: 65vh;
+    overflow: auto;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 1rem;
+    background: #07111f;
+    color: #d6f5e1;
+    font: 0.92rem/1.45 Consolas, "Liberation Mono", monospace;
+    white-space: pre-wrap;
+}
+
 .btn:hover,
 input[type="submit"].btn:hover {
     background: var(--button-hover-bg);

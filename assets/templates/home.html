@@ -1,2 +1,63 @@
-{% extends 'layout.html' %} {% block title %} Home {% endblock %} {% block
-top_actions %} {% endblock %} {% block content %} Hello World! {% endblock %}
+{% extends 'layout.html' %}
+
+{% block title %}Disks{% endblock %}
+
+{% block content %}
+{% if error_message %}
+<div class="notice notice-error">{{ error_message }}</div>
+{% endif %}
+
+<div class="disk-list">
+    {% for disk in disks %}
+    <article class="disk-card">
+        <div class="disk-card-header">
+            <div>
+                <h2>{{ disk.model }}</h2>
+                {% if disk.model_exact %}
+                <p>{{ disk.model_exact }}</p>
+                {% endif %}
+            </div>
+            <span class="status-pill">{{ disk.erase_type }}</span>
+        </div>
+
+        <dl class="metadata-grid">
+            <div>
+                <dt>Device</dt>
+                <dd>{{ disk.device }}</dd>
+            </div>
+            <div>
+                <dt>Serial</dt>
+                <dd>{{ disk.serial }}</dd>
+            </div>
+            <div>
+                <dt>Size</dt>
+                <dd>{{ disk.size_formated }}</dd>
+            </div>
+            <div>
+                <dt>Connection</dt>
+                <dd>{{ disk.connection_type }}</dd>
+            </div>
+            <div>
+                <dt>Type</dt>
+                <dd>{{ disk.disk_type }}</dd>
+            </div>
+            <div>
+                <dt>Removable</dt>
+                <dd>{% if disk.removable %}Yes{% else %}No{% endif %}</dd>
+            </div>
+        </dl>
+
+        <div class="form-actions">
+            <a class="btn" href="/smart/{{ disk.device }}">SMART</a>
+            {% if disk.erase_type != "None" %}
+            <a class="btn btn-danger" href="/erase/{{ disk.device }}">Secure Erase</a>
+            {% endif %}
+        </div>
+    </article>
+    {% else %}
+    {% if not error_message %}
+    <p class="empty-state">No disks found.</p>
+    {% endif %}
+    {% endfor %}
+</div>
+{% endblock %}

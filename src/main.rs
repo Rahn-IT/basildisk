@@ -1,30 +1,86 @@
-use std::{path::Path, sync::Arc};
+use std::{
+    path::Path,
+    sync::Arc,
+    time::{SystemTime, UNIX_EPOCH},
+};
 
 use axum::{
     Router,
-    extract::State,
+    extract::{
+        Path as AxumPath, State,
+        ws::{Message, WebSocketUpgrade},
+    },
     http::{HeaderValue, header},
     middleware,
-    response::Html,
+    response::{Html, IntoResponse, Redirect, Response},
     routing::{get, post},
 };
-use serde::Serialize;
+use axum_extra::extract::Form;
+use serde::{Deserialize, Serialize};
 use sqlx::{Sqlite, SqlitePool, migrate::MigrateDatabase};
 
+mod disk_info;
+mod erase;
 pub mod error;
+mod jobs;
+mod lsblk;
+mod smartctl;
 mod users;
+
+use disk_info::Disk;
+use erase::{EraseJob, EraseType, hdparm::Hdparm};
+use error::AppError;
+use jobs::{JobInfo, JobManager};
+use smartctl::SmartCtl;
 
 const DB_PATH: &str = "./db/db.sqlite";
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 struct AppState {
     db: SqlitePool,
     jinja: Arc<minijinja::Environment<'static>>,
+    job_manager: Arc<JobManager>,
 }
 
 #[derive(Serialize)]
-struct Home {
+struct DiskListView {
     is_admin: bool,
+    disks: Vec<Disk>,
+    error_message: Option<String>,
+}
+
+#[derive(Serialize)]
+struct SmartView {
+    is_admin: bool,
+    smart: SmartCtl,
+}
+
+#[derive(Serialize)]
+struct EraseRequestView {
+    is_admin: bool,
+    disk: Disk,
+    timestamp: u64,
+    requires_unfreeze: bool,
+    error_message: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ConfirmErase {
+    serial: String,
+    timestamp: u64,
+}
+
+#[derive(Serialize)]
+struct JobsView {
+    is_admin: bool,
+    running_jobs: Vec<JobInfo>,
+    finished_jobs: Vec<JobInfo>,
+}
+
+#[derive(Serialize)]
+struct JobDetailView {
+    is_admin: bool,
+    job: JobInfo,
 }
 
 #[tokio::main]
@@ -45,6 +101,7 @@ async fn main() {
     let state = AppState {
         db: db.clone(),
         jinja: Arc::new(jinja),
+        job_manager: Arc::new(JobManager::new()),
     };
 
     tokio::spawn(async move {
@@ -60,7 +117,7 @@ async fn main() {
         .with_state(state);
 
     // run our app with hyper, listening globally on port 3000
-    let addr = "0.0.0.0:4040";
+    let addr = "0.0.0.0:5080";
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     println!("Starting webserver on: http://{}", addr);
     axum::serve(listener, app).await.unwrap();
@@ -73,11 +130,16 @@ fn router() -> Router<AppState> {
             "/users/{id}/delete",
             get(users::delete_get).post(users::delete_post),
         )
+        .route("/erase/{device}", get(erase_get).post(erase_post))
         .route_layer(middleware::from_extractor::<users::RequireAdmin>());
 
     Router::new()
         // `GET /` goes to `root`
         .route("/", get(root))
+        .route("/smart/{device}", get(smart))
+        .route("/jobs", get(jobs_index))
+        .route("/jobs/{id}", get(job_detail))
+        .route("/jobs/{id}/log", get(job_log))
         .route("/setup", get(users::setup_get).post(users::setup_post))
         .route("/login", get(users::login_get).post(users::login_post))
         .route("/logout", post(users::logout_post))
@@ -104,15 +166,205 @@ fn router() -> Router<AppState> {
         .merge(admin_routes)
 }
 
-async fn root(State(state): State<AppState>, current_user: users::CurrentUser) -> Html<String> {
+async fn root(
+    State(state): State<AppState>,
+    current_user: users::CurrentUser,
+) -> Result<Html<String>, AppError> {
+    let (disks, error_message) = match Disk::list().await {
+        Ok(disks) => (disks, None),
+        Err(err) => (Vec::new(), Some(format!("Error listing disks: {err}"))),
+    };
+
     let template = state
         .jinja
         .get_template("home.html")
         .expect("template is loaded");
-    let rendered = template
-        .render(&Home {
-            is_admin: current_user.is_admin,
+    let rendered = template.render(DiskListView {
+        is_admin: current_user.is_admin,
+        disks,
+        error_message,
+    })?;
+    Ok(Html(rendered))
+}
+
+async fn smart(
+    State(state): State<AppState>,
+    current_user: users::CurrentUser,
+    AxumPath(device): AxumPath<String>,
+) -> Result<Html<String>, AppError> {
+    let smart = SmartCtl::get(&device).await?;
+    let template = state
+        .jinja
+        .get_template("smart.html")
+        .expect("template is loaded");
+    let rendered = template.render(SmartView {
+        is_admin: current_user.is_admin,
+        smart,
+    })?;
+    Ok(Html(rendered))
+}
+
+async fn erase_get(
+    State(state): State<AppState>,
+    current_user: users::CurrentUser,
+    AxumPath(device): AxumPath<String>,
+) -> Result<Html<String>, AppError> {
+    let disk = find_disk(&device).await?;
+    let (requires_unfreeze, error_message) = match disk.erase_type {
+        EraseType::AtaSecureErase | EraseType::AtaEnhancedSecureErase => {
+            match Hdparm::get_for_disk(&device).await {
+                Ok(hdparm) => (hdparm.frozen, None),
+                Err(err) => (
+                    false,
+                    Some(format!("Error checking drive security state: {err}")),
+                ),
+            }
+        }
+        EraseType::BlockOverride => (false, None),
+        EraseType::None => (
+            false,
+            Some("Secure erase is not supported for this disk.".to_string()),
+        ),
+    };
+
+    let template = state
+        .jinja
+        .get_template("erase.html")
+        .expect("template is loaded");
+    let rendered = template.render(EraseRequestView {
+        is_admin: current_user.is_admin,
+        disk,
+        timestamp: unix_timestamp(),
+        requires_unfreeze,
+        error_message,
+    })?;
+    Ok(Html(rendered))
+}
+
+async fn erase_post(
+    State(state): State<AppState>,
+    AxumPath(device): AxumPath<String>,
+    Form(form): Form<ConfirmErase>,
+) -> Result<Redirect, AppError> {
+    let disk = find_disk(&device).await?;
+    let now = unix_timestamp();
+
+    if now.saturating_sub(form.timestamp) > 60 {
+        return Err(AppError::conflict("Confirm timeout, try again."));
+    }
+
+    if disk.serial.as_deref() != Some(form.serial.as_str()) {
+        return Err(AppError::conflict(
+            "Serial number changed. Did you unplug the disk?",
+        ));
+    }
+
+    if disk.erase_type == EraseType::None {
+        return Err(AppError::conflict(
+            "Secure erase is not supported for this disk.",
+        ));
+    }
+
+    let job = EraseJob {
+        device,
+        connection_type: disk.connection_type,
+        disk_type: disk.disk_type,
+        erase_type: disk.erase_type,
+        model: disk.model,
+        serial: form.serial,
+    };
+
+    let id = state
+        .job_manager
+        .run_job(job, state.db.clone())
+        .await
+        .map_err(|_| AppError::conflict("A job is already running for this disk."))?;
+
+    Ok(Redirect::to(&format!("/jobs/{id}")))
+}
+
+async fn jobs_index(
+    State(state): State<AppState>,
+    current_user: users::CurrentUser,
+) -> Result<Html<String>, AppError> {
+    let running_jobs = state.job_manager.list_running_jobs().await;
+    let finished_jobs = state.job_manager.list_finished_jobs(&state.db).await?;
+
+    let template = state
+        .jinja
+        .get_template("jobs.html")
+        .expect("template is loaded");
+    let rendered = template.render(JobsView {
+        is_admin: current_user.is_admin,
+        running_jobs,
+        finished_jobs,
+    })?;
+    Ok(Html(rendered))
+}
+
+async fn job_detail(
+    State(state): State<AppState>,
+    current_user: users::CurrentUser,
+    AxumPath(id): AxumPath<String>,
+) -> Result<Html<String>, AppError> {
+    let job = state
+        .job_manager
+        .get_job_info(&id, &state.db)
+        .await?
+        .ok_or_else(|| AppError::not_found_for("Job", format!("No job exists for id: {id}")))?;
+
+    let template = state
+        .jinja
+        .get_template("job_detail.html")
+        .expect("template is loaded");
+    let rendered = template.render(JobDetailView {
+        is_admin: current_user.is_admin,
+        job,
+    })?;
+    Ok(Html(rendered))
+}
+
+async fn job_log(
+    State(state): State<AppState>,
+    AxumPath(id): AxumPath<String>,
+    ws: WebSocketUpgrade,
+) -> Result<Response, AppError> {
+    let log = state
+        .job_manager
+        .subscribe_log(&id, &state.db)
+        .await?
+        .ok_or_else(|| AppError::not_found_for("Job", format!("No job exists for id: {id}")))?;
+
+    Ok(ws
+        .on_upgrade(move |mut socket| async move {
+            let (current, subscriber) = log;
+
+            if socket.send(Message::Text(current.into())).await.is_err() {
+                return;
+            }
+
+            if let Some(mut subscriber) = subscriber {
+                while let Ok(content) = subscriber.recv().await {
+                    if socket.send(Message::Text(content.into())).await.is_err() {
+                        break;
+                    }
+                }
+            }
         })
-        .unwrap();
-    Html(rendered)
+        .into_response())
+}
+
+async fn find_disk(device: &str) -> Result<Disk, AppError> {
+    Disk::list()
+        .await?
+        .into_iter()
+        .find(|disk| disk.device == device)
+        .ok_or_else(|| AppError::not_found_for("Disk", format!("No disk exists for {device}")))
+}
+
+fn unix_timestamp() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|time| time.as_secs())
+        .unwrap_or(0)
 }

@@ -1,0 +1,18 @@
+{% extends 'layout.html' %}
+
+{% block title %}Job Log{% endblock %}
+
+{% block content %}
+<dl class="metadata-grid">
+    <div>
+        <dt>Name</dt>
+        <dd>{{ job.name }}</dd>
+    </div>
+    <div>
+        <dt>Disk</dt>
+        <dd>{{ job.disk }}</dd>
+    </div>
+</dl>
+
+<pre class="job-log" data-log-url="/jobs/{{ job.id }}/log"></pre>
+{% endblock %}

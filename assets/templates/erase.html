@@ -1,0 +1,46 @@
+{% extends 'layout.html' %}
+
+{% block title %}Secure Erase{% endblock %}
+
+{% block content %}
+{% if error_message %}
+<div class="notice notice-error">{{ error_message }}</div>
+{% endif %}
+
+{% if requires_unfreeze %}
+<div class="notice notice-warning">
+    This disk is frozen. Suspend and resume the machine, then reload this page before starting the erase.
+</div>
+{% endif %}
+
+<dl class="metadata-grid">
+    <div>
+        <dt>Model</dt>
+        <dd>{{ disk.model }}</dd>
+    </div>
+    <div>
+        <dt>Serial</dt>
+        <dd>{{ disk.serial }}</dd>
+    </div>
+    <div>
+        <dt>Device</dt>
+        <dd>{{ disk.device }}</dd>
+    </div>
+    <div>
+        <dt>Method</dt>
+        <dd>{{ disk.erase_type }}</dd>
+    </div>
+</dl>
+
+{% if disk.erase_type != "None" %}
+<form class="plan-form" method="post" action="/erase/{{ disk.device }}">
+    <input type="hidden" name="timestamp" value="{{ timestamp }}" />
+    <label for="serial">Type the serial number to confirm</label>
+    <input id="serial" type="text" name="serial" autocomplete="off" required />
+    <div class="form-actions">
+        <input class="btn btn-danger" type="submit" value="Start Secure Erase" />
+        <a class="btn" href="/">Cancel</a>
+    </div>
+</form>
+{% endif %}
+{% endblock %}

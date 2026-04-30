@@ -1,4 +1,21 @@
 window.onload = function () {
+  document.querySelectorAll(".job-log[data-log-url]").forEach((log) => {
+    const url = new URL(log.dataset.logUrl, window.location.href);
+    url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+
+    const socket = new WebSocket(url);
+    socket.addEventListener("message", (event) => {
+      log.textContent += event.data;
+      log.scrollTop = log.scrollHeight;
+    });
+    socket.addEventListener("close", () => {
+      log.classList.add("is-complete");
+    });
+    socket.addEventListener("error", () => {
+      log.textContent += "\nLog connection failed.\n";
+    });
+  });
+
   // Add event listeners to all "Add Row" buttons
   document.querySelectorAll(".add-row").forEach((button) => {
     button.addEventListener("click", function () {

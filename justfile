@@ -8,3 +8,10 @@ sqlx:
     cargo sqlx database drop -y
     cargo sqlx database create
     cargo sqlx migrate run
+
+run:
+    cargo build
+    sudo target/debug/basildisk
+
+debian:
+    sudo apt install smartmontools
