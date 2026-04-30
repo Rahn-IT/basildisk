@@ -3,6 +3,17 @@
 {% block title %}Jobs{% endblock %}
 
 {% block content %}
+<form class="log-search" method="get" action="/jobs">
+    <label for="q">Search jobs and logs</label>
+    <div class="log-search-row">
+        <input id="q" type="text" name="q" value="{{ query }}" />
+        <input class="btn" type="submit" value="Search" />
+        {% if has_query %}
+        <a class="btn" href="/jobs">Clear</a>
+        {% endif %}
+    </div>
+</form>
+
 <h2 class="section-title">Running</h2>
 <div class="job-list">
     {% for job in running_jobs %}
@@ -16,8 +27,14 @@
 </div>
 
 <h2 class="section-title">Finished</h2>
+<div class="log-toolbar">
+    <span>
+        {% if has_query %}{{ finished_jobs.total_jobs }} matching jobs{% else %}{{ finished_jobs.total_jobs }} jobs{% endif %}
+        · page {{ finished_jobs.page }} of {{ finished_jobs.total_pages }}
+    </span>
+</div>
 <div class="job-list">
-    {% for job in finished_jobs %}
+    {% for job in finished_jobs.jobs %}
     <a class="job-row" href="/jobs/{{ job.id }}">
         <strong>{{ job.name }}</strong>
         <span>{{ job.disk }}</span>
@@ -25,5 +42,19 @@
     {% else %}
     <p class="empty-state">No finished jobs.</p>
     {% endfor %}
+</div>
+
+<div class="pagination">
+    {% if finished_jobs.has_previous %}
+    <a class="btn" href="{{ previous_url }}">Previous</a>
+    {% else %}
+    <span class="btn btn-disabled">Previous</span>
+    {% endif %}
+
+    {% if finished_jobs.has_next %}
+    <a class="btn" href="{{ next_url }}">Next</a>
+    {% else %}
+    <span class="btn btn-disabled">Next</span>
+    {% endif %}
 </div>
 {% endblock %}

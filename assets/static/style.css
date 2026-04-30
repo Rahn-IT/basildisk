@@ -588,6 +588,48 @@ input[type="submit"].btn {
     white-space: pre-wrap;
 }
 
+.log-search {
+    margin: 0 0 1rem;
+}
+
+.log-search label {
+    display: inline-block;
+    margin-bottom: 0.4rem;
+    font-weight: 600;
+}
+
+.log-search-row,
+.log-toolbar,
+.pagination {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+}
+
+.log-toolbar {
+    justify-content: space-between;
+    margin: 0 0 0.6rem;
+    color: var(--muted);
+    font-size: 0.9rem;
+}
+
+.pagination {
+    margin-top: 0.8rem;
+}
+
+.log-line {
+    display: block;
+}
+
+.log-line-no {
+    display: inline-block;
+    min-width: 4.5rem;
+    margin-right: 0.7rem;
+    color: #7fa5b7;
+    user-select: none;
+}
+
 .btn:hover,
 input[type="submit"].btn:hover {
     background: var(--button-hover-bg);

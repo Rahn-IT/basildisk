@@ -3,8 +3,13 @@ window.onload = function () {
     const url = new URL(log.dataset.logUrl, window.location.href);
     url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
 
+    let isFirstMessage = true;
     const socket = new WebSocket(url);
     socket.addEventListener("message", (event) => {
+      if (isFirstMessage && log.dataset.replaceFirstMessage === "true") {
+        log.textContent = "";
+      }
+      isFirstMessage = false;
       log.textContent += event.data;
       log.scrollTop = log.scrollHeight;
     });

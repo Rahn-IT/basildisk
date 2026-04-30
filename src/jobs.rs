@@ -16,6 +16,7 @@ __________               __ __       _____        __
  /______  /____  /____  \__|____/____ ||__|____  \__|_ \
         \/     \/     \/             \/        \/     \/
 ";
+pub const JOB_PAGE_SIZE: i64 = 20;
 
 pub struct JobManager {
     running_jobs: std::sync::Mutex<BTreeMap<String, RunningJob>>,
@@ -35,6 +36,19 @@ pub struct RunningJob {
     incoming: broadcast::Receiver<String>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct JobPage {
+    pub jobs: Vec<JobInfo>,
+    pub page: i64,
+    pub page_size: i64,
+    pub total_jobs: i64,
+    pub total_pages: i64,
+    pub has_previous: bool,
+    pub has_next: bool,
+    pub previous_page: i64,
+    pub next_page: i64,
+}
+
 impl JobManager {
     pub fn new() -> Self {
         Self {
@@ -43,27 +57,92 @@ impl JobManager {
         }
     }
 
-    pub async fn list_running_jobs(&self) -> Vec<JobInfo> {
+    pub async fn list_running_jobs_filtered(&self, search: Option<&str>) -> Vec<JobInfo> {
+        let search = search.map(str::trim).filter(|value| !value.is_empty());
+
         self.running_jobs
             .lock()
             .unwrap()
             .values()
+            .filter(|job| {
+                let Some(search) = search else {
+                    return true;
+                };
+
+                job.info.name.contains(search)
+                    || job.info.disk.contains(search)
+                    || job.log.lock().unwrap().contains(search)
+            })
             .map(|job| &job.info)
             .cloned()
             .collect()
     }
 
-    pub async fn list_finished_jobs(&self, db: &SqlitePool) -> Result<Vec<JobInfo>, sqlx::Error> {
-        sqlx::query_as!(
-            JobInfo,
-            r#"
-            SELECT id, disk, name
-            FROM jobs
-            ORDER BY rowid DESC
-            "#
-        )
-        .fetch_all(db)
-        .await
+    pub async fn list_finished_jobs_page(
+        &self,
+        db: &SqlitePool,
+        page: i64,
+        search: Option<&str>,
+    ) -> Result<JobPage, sqlx::Error> {
+        let search = search.map(str::trim).filter(|value| !value.is_empty());
+        let total_jobs = if let Some(search) = search {
+            sqlx::query_scalar!(
+                r#"
+                SELECT COUNT(*) as "count!: i64"
+                FROM jobs
+                WHERE name LIKE '%' || $1 || '%'
+                    OR disk LIKE '%' || $1 || '%'
+                    OR log LIKE '%' || $1 || '%'
+                "#,
+                search
+            )
+            .fetch_one(db)
+            .await?
+        } else {
+            sqlx::query_scalar!("SELECT COUNT(*) as \"count!: i64\" FROM jobs")
+                .fetch_one(db)
+                .await?
+        };
+
+        let total_pages = total_jobs.saturating_add(JOB_PAGE_SIZE - 1) / JOB_PAGE_SIZE;
+        let page = page.clamp(1, total_pages.max(1));
+        let offset = (page - 1) * JOB_PAGE_SIZE;
+
+        let jobs = if let Some(search) = search {
+            sqlx::query_as!(
+                JobInfo,
+                r#"
+                SELECT id, disk, name
+                FROM jobs
+                WHERE name LIKE '%' || $1 || '%'
+                    OR disk LIKE '%' || $1 || '%'
+                    OR log LIKE '%' || $1 || '%'
+                ORDER BY rowid DESC
+                LIMIT $2 OFFSET $3
+                "#,
+                search,
+                JOB_PAGE_SIZE,
+                offset
+            )
+            .fetch_all(db)
+            .await?
+        } else {
+            sqlx::query_as!(
+                JobInfo,
+                r#"
+                SELECT id, disk, name
+                FROM jobs
+                ORDER BY rowid DESC
+                LIMIT $1 OFFSET $2
+                "#,
+                JOB_PAGE_SIZE,
+                offset
+            )
+            .fetch_all(db)
+            .await?
+        };
+
+        Ok(Self::build_job_page(jobs, page, total_jobs))
     }
 
     pub async fn get_job_info(
@@ -110,6 +189,23 @@ impl JobManager {
             .await?;
 
         Ok(log.map(|log| (log, None)))
+    }
+
+    fn build_job_page(jobs: Vec<JobInfo>, page: i64, total_jobs: i64) -> JobPage {
+        let total_pages = total_jobs.saturating_add(JOB_PAGE_SIZE - 1) / JOB_PAGE_SIZE;
+        let total_pages = total_pages.max(1);
+
+        JobPage {
+            jobs,
+            page,
+            page_size: JOB_PAGE_SIZE,
+            total_jobs,
+            total_pages,
+            has_previous: page > 1,
+            has_next: page < total_pages,
+            previous_page: page.saturating_sub(1).max(1),
+            next_page: (page + 1).min(total_pages),
+        }
     }
 
     fn lock_disk(&self, device: &str) -> Result<tokio::sync::OwnedMutexGuard<()>, TryLockError> {

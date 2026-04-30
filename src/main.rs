@@ -7,7 +7,7 @@ use std::{
 use axum::{
     Router,
     extract::{
-        Path as AxumPath, State,
+        Path as AxumPath, Query, State,
         ws::{Message, WebSocketUpgrade},
     },
     http::{HeaderValue, header},
@@ -30,7 +30,7 @@ mod users;
 use disk_info::Disk;
 use erase::{EraseJob, EraseType, hdparm::Hdparm};
 use error::AppError;
-use jobs::{JobInfo, JobManager};
+use jobs::{JobInfo, JobManager, JobPage};
 use smartctl::SmartCtl;
 
 const DB_PATH: &str = "./db/db.sqlite";
@@ -74,13 +74,23 @@ struct ConfirmErase {
 struct JobsView {
     is_admin: bool,
     running_jobs: Vec<JobInfo>,
-    finished_jobs: Vec<JobInfo>,
+    finished_jobs: JobPage,
+    query: String,
+    has_query: bool,
+    previous_url: String,
+    next_url: String,
 }
 
 #[derive(Serialize)]
 struct JobDetailView {
     is_admin: bool,
     job: JobInfo,
+}
+
+#[derive(Debug, Deserialize)]
+struct JobsQuery {
+    page: Option<i64>,
+    q: Option<String>,
 }
 
 #[tokio::main]
@@ -300,18 +310,34 @@ async fn erase_post(
 async fn jobs_index(
     State(state): State<AppState>,
     current_user: users::CurrentUser,
+    Query(query): Query<JobsQuery>,
 ) -> Result<Html<String>, AppError> {
-    let running_jobs = state.job_manager.list_running_jobs().await;
-    let finished_jobs = state.job_manager.list_finished_jobs(&state.db).await?;
+    let query_text = query.q.unwrap_or_default();
+    let page = query.page.unwrap_or(1);
+    let running_jobs = state
+        .job_manager
+        .list_running_jobs_filtered(Some(&query_text))
+        .await;
+    let finished_jobs = state
+        .job_manager
+        .list_finished_jobs_page(&state.db, page, Some(&query_text))
+        .await?;
+    let has_query = !query_text.trim().is_empty();
 
     let template = state
         .jinja
         .get_template("jobs.html")
         .expect("template is loaded");
+    let previous_url = jobs_page_url(finished_jobs.previous_page, &query_text);
+    let next_url = jobs_page_url(finished_jobs.next_page, &query_text);
     let rendered = template.render(JobsView {
         is_admin: current_user.is_admin,
         running_jobs,
         finished_jobs,
+        query: query_text,
+        has_query,
+        previous_url,
+        next_url,
     })?;
     Ok(Html(rendered))
 }
@@ -381,4 +407,25 @@ fn unix_timestamp() -> u64 {
         .duration_since(UNIX_EPOCH)
         .map(|time| time.as_secs())
         .unwrap_or(0)
+}
+
+fn jobs_page_url(page: i64, query: &str) -> String {
+    if query.trim().is_empty() {
+        format!("/jobs?page={page}")
+    } else {
+        format!("/jobs?page={page}&q={}", form_encode(query))
+    }
+}
+
+fn form_encode(value: &str) -> String {
+    value
+        .bytes()
+        .flat_map(|byte| match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                vec![byte as char]
+            }
+            b' ' => vec!['+'],
+            _ => format!("%{byte:02X}").chars().collect(),
+        })
+        .collect()
 }
