@@ -357,6 +357,15 @@ input[type="submit"].btn {
     line-height: 1.2;
 }
 
+.btn-disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+}
+
+.btn-disabled:hover {
+    text-decoration: none;
+}
+
 .notice {
     border: 1px solid var(--line);
     border-radius: 10px;
@@ -438,6 +447,57 @@ input[type="submit"].btn {
 
 .metadata-grid dd {
     margin: 0.2rem 0 0;
+    overflow-wrap: anywhere;
+}
+
+.partition-list {
+    display: grid;
+    gap: 0.55rem;
+    margin: 0.8rem 0 1rem;
+}
+
+.partition-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--card);
+    padding: 0.7rem 0.8rem;
+}
+
+.partition-card.is-mounted {
+    border-color: #d6a84f;
+    background: #fffaf0;
+}
+
+.partition-card h3 {
+    margin: 0;
+    font-size: 0.95rem;
+}
+
+.partition-card p {
+    margin: 0.2rem 0 0;
+    color: var(--muted);
+    font-size: 0.88rem;
+}
+
+.partition-mount {
+    display: grid;
+    gap: 0.15rem;
+    text-align: right;
+    min-width: min(220px, 45%);
+}
+
+.partition-mount span {
+    color: var(--muted);
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+.partition-mount strong {
     overflow-wrap: anywhere;
 }
 

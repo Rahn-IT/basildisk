@@ -47,10 +47,31 @@
             </div>
         </dl>
 
+        {% if disk.partitions %}
+        <div class="partition-list">
+            {% for partition in disk.partitions %}
+            <section class="partition-card{% if partition.is_mounted %} is-mounted{% endif %}">
+                <div>
+                    <h3>{{ partition.name }}</h3>
+                    <p>{{ partition.kind }} · {{ partition.size_formated }}</p>
+                </div>
+                <div class="partition-mount">
+                    <span>Mount point</span>
+                    <strong>{% if partition.is_mounted %}{{ partition.mount_points_display }}{% else %}Not mounted{% endif %}</strong>
+                </div>
+            </section>
+            {% endfor %}
+        </div>
+        {% endif %}
+
         <div class="form-actions">
             <a class="btn" href="/smart/{{ disk.device }}">SMART</a>
             {% if disk.erase_type != "None" %}
+            {% if disk.is_mounted %}
+            <span class="btn btn-disabled" title="Unmount this disk before secure erase">Secure Erase</span>
+            {% else %}
             <a class="btn btn-danger" href="/erase/{{ disk.device }}">Secure Erase</a>
+            {% endif %}
             {% endif %}
         </div>
     </article>

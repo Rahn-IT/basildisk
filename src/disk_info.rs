@@ -18,9 +18,21 @@ pub struct Disk {
     size_formated: String,
     pub device: String,
     removable: bool,
+    pub is_mounted: bool,
+    pub mount_points_display: String,
+    pub partitions: Vec<Partition>,
     pub disk_type: DiskType,
     pub connection_type: ConnectionType,
     pub erase_type: EraseType,
+}
+
+#[derive(Serialize)]
+pub struct Partition {
+    pub name: String,
+    pub kind: String,
+    pub size_formated: String,
+    pub is_mounted: bool,
+    pub mount_points_display: String,
 }
 
 #[derive(Serialize, PartialEq, Eq, Clone, Copy)]
@@ -123,10 +135,10 @@ impl Disk {
 
                 // Samsung just writes junk into the model family :(
                 if model_display.contains("based") {
-                    model_display = lsblk_info.model.unwrap_or_default()
+                    model_display = lsblk_info.model.clone().unwrap_or_default()
                 }
 
-                let connection_type = if let Some(tran) = lsblk_info.tran {
+                let connection_type = if let Some(tran) = &lsblk_info.tran {
                     match tran.as_str() {
                         "sata" => ConnectionType::Sata,
                         "scsi" => ConnectionType::Scsi,
@@ -147,6 +159,18 @@ impl Disk {
                 let erase_type =
                     EraseType::get_for_disk(&lsblk_info.name, connection_type, disk_type).await?;
 
+                let mount_points = lsblk_info.mount_points();
+                let partitions = lsblk_info
+                    .partitions()
+                    .into_iter()
+                    .map(|partition| Partition {
+                        name: partition.name,
+                        kind: partition.kind,
+                        size_formated: Self::format_size(partition.size),
+                        is_mounted: partition.is_mounted,
+                        mount_points_display: partition.mount_points_display,
+                    })
+                    .collect();
                 let disk = Disk {
                     model: model_display,
                     model_exact,
@@ -154,6 +178,9 @@ impl Disk {
                     size_formated: Self::format_size(lsblk_info.size),
                     device: lsblk_info.name,
                     removable: lsblk_info.hotplug,
+                    is_mounted: !mount_points.is_empty(),
+                    mount_points_display: mount_points.join(", "),
+                    partitions,
                     connection_type,
                     disk_type,
                     erase_type,

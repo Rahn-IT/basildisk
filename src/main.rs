@@ -211,6 +211,13 @@ async fn erase_get(
 ) -> Result<Html<String>, AppError> {
     let disk = find_disk(&device).await?;
     let (requires_unfreeze, error_message) = match disk.erase_type {
+        _ if disk.is_mounted => (
+            false,
+            Some(format!(
+                "Secure erase is disabled because this disk is mounted at {}.",
+                disk.mount_points_display
+            )),
+        ),
         EraseType::AtaSecureErase | EraseType::AtaEnhancedSecureErase => {
             match Hdparm::get_for_disk(&device).await {
                 Ok(hdparm) => (hdparm.frozen, None),
@@ -263,6 +270,13 @@ async fn erase_post(
         return Err(AppError::conflict(
             "Secure erase is not supported for this disk.",
         ));
+    }
+
+    if disk.is_mounted {
+        return Err(AppError::conflict(format!(
+            "Secure erase is disabled because this disk is mounted at {}.",
+            disk.mount_points_display
+        )));
     }
 
     let job = EraseJob {
