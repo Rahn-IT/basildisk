@@ -72,18 +72,14 @@
                     <div class="partition-actions">
                         {% if partition.can_mount %}
                         <form method="post" action="/partitions/{{ partition.name }}/mount">
-                            <input class="btn" type="submit" value="Mount" />
+                            <input class="btn partition-action-btn" type="submit" value="Mount" />
                         </form>
-                        {% else %}
-                        <span class="btn btn-disabled" title="{{ partition.mount_disabled_reason }}">Mount</span>
                         {% endif %}
 
                         {% if partition.can_unmount %}
                         <form method="post" action="/partitions/{{ partition.name }}/unmount">
-                            <input class="btn" type="submit" value="Unmount" />
+                            <input class="btn partition-action-btn" type="submit" value="Unmount" />
                         </form>
-                        {% else %}
-                        <span class="btn btn-disabled" title="{{ partition.unmount_disabled_reason }}">Unmount</span>
                         {% endif %}
                     </div>
                 </div>
