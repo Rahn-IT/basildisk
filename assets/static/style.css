@@ -463,13 +463,29 @@ input[type="submit"].btn {
     gap: 1rem;
     border: 1px solid var(--line);
     border-radius: 8px;
-    background: var(--card);
+    background: color-mix(in srgb, var(--card-2) 72%, var(--bg) 28%);
     padding: 0.7rem 0.8rem;
 }
 
+.partition-depth-1 {
+    margin-left: 1.25rem;
+}
+
+.partition-depth-2 {
+    margin-left: 2.5rem;
+}
+
+.partition-depth-3 {
+    margin-left: 3.75rem;
+}
+
+.partition-depth-4 {
+    margin-left: 5rem;
+}
+
 .partition-card.is-mounted {
-    border-color: #d6a84f;
-    background: #fffaf0;
+    border-color: var(--button-active-text);
+    background: var(--button-active-bg);
 }
 
 .partition-card h3 {

@@ -31,6 +31,7 @@ pub struct Partition {
     pub name: String,
     pub kind: String,
     pub size_formated: String,
+    pub depth_class: String,
     pub is_mounted: bool,
     pub mount_points_display: String,
 }
@@ -167,6 +168,7 @@ impl Disk {
                         name: partition.name,
                         kind: partition.kind,
                         size_formated: Self::format_size(partition.size),
+                        depth_class: format!("partition-depth-{}", partition.depth.min(4)),
                         is_mounted: partition.is_mounted,
                         mount_points_display: partition.mount_points_display,
                     })
