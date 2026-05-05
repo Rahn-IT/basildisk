@@ -13,12 +13,22 @@ use tokio::{process::Command, sync::broadcast};
 
 use crate::{
     disk_info::{ConnectionType, DiskType},
-    jobs::{self, Job},
+    jobs::{self, FinalLogSuccessData, FinalLogSuccessDataFn, Job},
+    timestamp,
 };
 
 pub mod hdparm;
 pub mod nvme;
 pub mod shred;
+
+pub(crate) const SECURE_ERASE_SIGNATURE_EXPLANATION: &str = r#"
+Signature explanation:
+The SHA256 value above is calculated over the bytes from the first '=' character in this log through the last '=' character in the secure erase footer. This includes the secure erase header, all recorded erase output, and the success footer. It excludes the Basildisk ASCII banner above the header and excludes the SHA256 line, timestamp availability line, TimestampRequestBase64, TimestampResponseBase64, and this explanation text.
+
+The timestamp request is an RFC 3161 TimeStampRequest for the SHA256 digest above. The timestamp response is an RFC 3161 TimeStampResponse from FreeTSA for that request. To verify it manually, decode TimestampRequestBase64 to a .tsq file and TimestampResponseBase64 to a .tsr file, then verify the .tsr against the .tsq with FreeTSA's CA certificate and TSA certificate from https://freetsa.org/. The same two files can also be uploaded to FreeTSA's online verifier.
+
+Basildisk was created by Rahn-IT (https://it-rahn.de)
+"#;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum EraseType {
@@ -145,7 +155,7 @@ impl Job for EraseJob {
         format!("{} for {}: {}", self.erase_type, self.model, self.serial)
     }
 
-    fn final_log_success_data(&self) -> Option<fn(&str) -> Option<String>> {
+    fn final_log_success_data(&self) -> Option<FinalLogSuccessDataFn> {
         Some(final_log_success_data)
     }
 
@@ -277,9 +287,30 @@ fn device_path(device: &str) -> PathBuf {
     }
 }
 
-fn final_log_success_data(log: &str) -> Option<String> {
-    let hash = hash_signed_log_content(log)?;
-    Some(format!("\nSHA256: {hash}\n"))
+fn final_log_success_data(
+    log: String,
+) -> std::pin::Pin<Box<dyn Future<Output = Option<FinalLogSuccessData>> + Send>> {
+    Box::pin(async move {
+        let hash = hash_signed_log_content(&log)?;
+        let mut data = format!("\nSHA256: {hash}\n");
+        let mut timestamp_request = None;
+        let mut timestamp_response = None;
+
+        match timestamp::request_sha256_timestamp(&hash).await {
+            Ok(timestamp) => {
+                data.push_str("Timestamp: RFC3161 FreeTSA response available\n");
+                timestamp_request = Some(timestamp.request);
+                timestamp_response = Some(timestamp.response);
+            }
+            Err(err) => data.push_str(&format!("Timestamp: unavailable ({err})\n")),
+        }
+
+        Some(FinalLogSuccessData {
+            log: data,
+            timestamp_request,
+            timestamp_response,
+        })
+    })
 }
 
 fn hash_signed_log_content(log: &str) -> Option<String> {

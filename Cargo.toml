@@ -9,10 +9,12 @@ argon2 = { version = "0.5.3", features = ["std"] }
 async_zip = { version = "0.0.18", features = ["deflate64", "full", "tokio", "tokio-fs", "tokio-util"] }
 axum = { version = "0.8.8", features = ["ws"] }
 axum-extra = { version = "0.12.5", features = ["async-read-body", "cookie", "form"] }
+base64 = "0.22.1"
 futures-lite = "2.6.1"
 mime = "0.3.17"
 minijinja = "2.14.0"
 minijinja-embed = "2.14.0"
+reqwest = "0.13.3"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.149"
 sha2 = "0.10.9"
@@ -22,6 +24,7 @@ time = { version = "0.3.47", features = ["formatting"] }
 tokio = { version = "1.49.0", features = ["full"] }
 tokio-util = { version = "0.7.18", features = ["io"] }
 uuid = { version = "1.19.1", features = ["v4", "serde"] }
+yasna = { version = "0.6.0", features = ["std", "time"] }
 
 [build-dependencies]
 minijinja-embed = "2.14.0"

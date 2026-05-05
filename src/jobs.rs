@@ -1,6 +1,7 @@
 use std::{
     collections::BTreeMap,
     future::Future,
+    pin::Pin,
     sync::Arc,
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -23,6 +24,14 @@ __________               __ __       _____        __
         \/     \/     \/             \/        \/     \/
 ";
 pub const JOB_PAGE_SIZE: i64 = 20;
+pub(crate) type FinalLogSuccessDataFn =
+    fn(String) -> Pin<Box<dyn Future<Output = Option<FinalLogSuccessData>> + Send>>;
+
+pub(crate) struct FinalLogSuccessData {
+    pub log: String,
+    pub timestamp_request: Option<Vec<u8>>,
+    pub timestamp_response: Option<Vec<u8>>,
+}
 
 pub struct JobManager {
     running_jobs: std::sync::Mutex<BTreeMap<String, RunningJob>>,
@@ -39,6 +48,8 @@ pub struct JobInfo {
 pub struct RunningJob {
     info: JobInfo,
     log: Arc<std::sync::Mutex<String>>,
+    timestamp_request: Arc<std::sync::Mutex<Option<Vec<u8>>>>,
+    timestamp_response: Arc<std::sync::Mutex<Option<Vec<u8>>>>,
     incoming: broadcast::Receiver<String>,
 }
 
@@ -197,6 +208,36 @@ impl JobManager {
         Ok(log.map(|log| (log, None)))
     }
 
+    pub async fn get_timestamp_files(
+        &self,
+        id: &str,
+        db: &SqlitePool,
+    ) -> Result<Option<JobTimestampFiles>, sqlx::Error> {
+        {
+            let lock = self.running_jobs.lock().unwrap();
+
+            if let Some(job) = lock.get(id) {
+                return Ok(Some(JobTimestampFiles {
+                    request: job.timestamp_request.lock().unwrap().clone(),
+                    response: job.timestamp_response.lock().unwrap().clone(),
+                }));
+            }
+        }
+
+        sqlx::query_as!(
+            JobTimestampFiles,
+            r#"
+            SELECT timestamp_request as "request?", timestamp_response as "response?"
+            FROM jobs
+            WHERE id = $1
+            LIMIT 1
+            "#,
+            id
+        )
+        .fetch_optional(db)
+        .await
+    }
+
     fn build_job_page(jobs: Vec<JobInfo>, page: i64, total_jobs: i64) -> JobPage {
         let total_pages = total_jobs.saturating_add(JOB_PAGE_SIZE - 1) / JOB_PAGE_SIZE;
         let total_pages = total_pages.max(1);
@@ -240,6 +281,8 @@ impl JobManager {
         let (send, recv) = broadcast::channel(3);
 
         let log = Arc::new(std::sync::Mutex::new(BANNER.to_string()));
+        let timestamp_request = Arc::new(std::sync::Mutex::new(None));
+        let timestamp_response = Arc::new(std::sync::Mutex::new(None));
 
         let rjob = RunningJob {
             info: JobInfo {
@@ -249,6 +292,8 @@ impl JobManager {
             },
             incoming: recv,
             log: log.clone(),
+            timestamp_request: timestamp_request.clone(),
+            timestamp_response: timestamp_response.clone(),
         };
 
         let id = rjob.info.id.clone();
@@ -264,28 +309,13 @@ impl JobManager {
             let mut log_receiver = logger.subscribe();
             let final_log_success_data = job.final_log_success_data();
 
-            let mut job_handle = tokio::spawn({
-                let logger = logger.clone();
-                async move { job.run(logger).await }
-            });
+            let job_handle = tokio::spawn(async move { job.run(logger).await });
 
-            let result = loop {
-                tokio::select! {
-                    content = log_receiver.recv() => {
-                        match content {
-                            Ok(content) => log.lock().unwrap().push_str(&content),
-                            Err(broadcast::error::RecvError::Lagged(_)) => {}
-                            Err(broadcast::error::RecvError::Closed) => {}
-                        }
-                    }
-                    result = &mut job_handle => break result,
-                }
-            };
-
-            while let Ok(content) = log_receiver.try_recv() {
+            while let Ok(content) = log_receiver.recv().await {
                 log.lock().unwrap().push_str(&content);
             }
 
+            let result = job_handle.await;
             match result {
                 Err(err) => log
                     .lock()
@@ -299,11 +329,12 @@ impl JobManager {
                     if let Some(final_log_success_data) = final_log_success_data {
                         let extra = {
                             let log = log.lock().unwrap();
-                            final_log_success_data(&log)
+                            final_log_success_data(log.clone())
                         };
-                        if let Some(extra) = extra {
-                            let _ = logger.send(extra.clone());
-                            log.lock().unwrap().push_str(&extra);
+                        if let Some(extra) = extra.await {
+                            log.lock().unwrap().push_str(&extra.log);
+                            *timestamp_request.lock().unwrap() = extra.timestamp_request;
+                            *timestamp_response.lock().unwrap() = extra.timestamp_response;
                         }
                     }
                 }
@@ -315,13 +346,17 @@ impl JobManager {
             };
 
             let log = rjob.log.lock().unwrap().clone();
+            let timestamp_request = rjob.timestamp_request.lock().unwrap().clone();
+            let timestamp_response = rjob.timestamp_response.lock().unwrap().clone();
 
             if let Err(err) = sqlx::query!(
-                "INSERT INTO jobs (id, disk, name, log) VALUES ($1, $2, $3, $4)",
+                "INSERT INTO jobs (id, disk, name, log, timestamp_request, timestamp_response) VALUES ($1, $2, $3, $4, $5, $6)",
                 rjob.info.id,
                 rjob.info.disk,
                 rjob.info.name,
-                log
+                log,
+                timestamp_request,
+                timestamp_response
             )
             .execute(&db)
             .await
@@ -333,6 +368,12 @@ impl JobManager {
 
         Ok(id2)
     }
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct JobTimestampFiles {
+    pub request: Option<Vec<u8>>,
+    pub response: Option<Vec<u8>>,
 }
 
 pub(crate) fn unix_now() -> i64 {
@@ -352,7 +393,7 @@ pub(crate) fn format_unix_timestamp(timestamp: i64) -> String {
 pub trait Job: Send + Sync + 'static {
     fn get_device(&self) -> &str;
     fn get_name(&self) -> String;
-    fn final_log_success_data(&self) -> Option<fn(&str) -> Option<String>> {
+    fn final_log_success_data(&self) -> Option<FinalLogSuccessDataFn> {
         None
     }
     fn run(

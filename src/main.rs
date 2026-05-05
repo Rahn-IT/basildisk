@@ -16,6 +16,7 @@ use axum::{
     routing::{get, post},
 };
 use axum_extra::extract::Form;
+use base64::{Engine as _, engine::general_purpose::STANDARD};
 use serde::{Deserialize, Serialize};
 use sqlx::{Sqlite, SqlitePool, migrate::MigrateDatabase};
 
@@ -27,6 +28,7 @@ mod jobs;
 mod lsblk;
 mod mount;
 mod smartctl;
+mod timestamp;
 mod users;
 mod zip_download;
 
@@ -38,7 +40,6 @@ use mount::{mount_partition, unmount_partition};
 use smartctl::SmartCtl;
 
 const DB_PATH: &str = "./db/db.sqlite";
-
 #[derive(Clone)]
 pub(crate) struct AppState {
     db: SqlitePool,
@@ -89,6 +90,7 @@ struct JobsView {
 struct JobDetailView {
     is_admin: bool,
     job: JobInfo,
+    has_timestamp_files: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -155,6 +157,14 @@ fn router() -> Router<AppState> {
         .route("/jobs/{id}", get(job_detail))
         .route("/jobs/{id}/log", get(job_log))
         .route("/jobs/{id}/log.txt", get(job_log_download))
+        .route(
+            "/jobs/{id}/timestamp-request.tsq",
+            get(job_timestamp_request_download),
+        )
+        .route(
+            "/jobs/{id}/timestamp-response.tsr",
+            get(job_timestamp_response_download),
+        )
         .route("/partitions/{device}/mount", post(partition_mount_post))
         .route("/partitions/{device}/unmount", post(partition_unmount_post))
         .route("/setup", get(users::setup_get).post(users::setup_post))
@@ -374,6 +384,11 @@ async fn job_detail(
         .get_job_info(&id, &state.db)
         .await?
         .ok_or_else(|| AppError::not_found_for("Job", format!("No job exists for id: {id}")))?;
+    let timestamp_files = state
+        .job_manager
+        .get_timestamp_files(&id, &state.db)
+        .await?
+        .ok_or_else(|| AppError::not_found_for("Job", format!("No job exists for id: {id}")))?;
 
     let template = state
         .jinja
@@ -382,6 +397,8 @@ async fn job_detail(
     let rendered = template.render(JobDetailView {
         is_admin: current_user.is_admin,
         job,
+        has_timestamp_files: timestamp_files.request.is_some()
+            && timestamp_files.response.is_some(),
     })?;
     Ok(Html(rendered))
 }
@@ -430,6 +447,12 @@ async fn job_log_download(
         .subscribe_log(&id, &state.db)
         .await?
         .ok_or_else(|| AppError::not_found_for("Job", format!("No job exists for id: {id}")))?;
+    let timestamp_files = state
+        .job_manager
+        .get_timestamp_files(&id, &state.db)
+        .await?
+        .ok_or_else(|| AppError::not_found_for("Job", format!("No job exists for id: {id}")))?;
+    let log = build_txt_log_download(&log, &timestamp_files);
     let filename = format!("secure-erase-protocol-{}-{}.txt", job.disk, job.id);
     let content_disposition = format!(
         "attachment; filename=\"{}\"",
@@ -450,6 +473,106 @@ async fn job_log_download(
         log,
     )
         .into_response())
+}
+
+async fn job_timestamp_request_download(
+    State(state): State<AppState>,
+    AxumPath(id): AxumPath<String>,
+) -> Result<Response, AppError> {
+    job_timestamp_download(
+        &state,
+        &id,
+        "application/timestamp-query",
+        "tsq",
+        TimestampFileKind::Request,
+    )
+    .await
+}
+
+async fn job_timestamp_response_download(
+    State(state): State<AppState>,
+    AxumPath(id): AxumPath<String>,
+) -> Result<Response, AppError> {
+    job_timestamp_download(
+        &state,
+        &id,
+        "application/timestamp-reply",
+        "tsr",
+        TimestampFileKind::Response,
+    )
+    .await
+}
+
+async fn job_timestamp_download(
+    state: &AppState,
+    id: &str,
+    content_type: &'static str,
+    extension: &str,
+    kind: TimestampFileKind,
+) -> Result<Response, AppError> {
+    let job = state
+        .job_manager
+        .get_job_info(id, &state.db)
+        .await?
+        .ok_or_else(|| AppError::not_found_for("Job", format!("No job exists for id: {id}")))?;
+    let timestamp_files = state
+        .job_manager
+        .get_timestamp_files(id, &state.db)
+        .await?
+        .ok_or_else(|| AppError::not_found_for("Job", format!("No job exists for id: {id}")))?;
+    let data = match kind {
+        TimestampFileKind::Request => timestamp_files.request,
+        TimestampFileKind::Response => timestamp_files.response,
+    }
+    .ok_or_else(|| {
+        AppError::not_found_for(
+            "Timestamp",
+            "This job log does not contain that timestamp file yet.",
+        )
+    })?;
+    let filename = format!(
+        "secure-erase-protocol-{}-{}.{}",
+        job.disk, job.id, extension
+    );
+    let content_disposition = format!(
+        "attachment; filename=\"{}\"",
+        escape_header_filename(&filename)
+    );
+
+    Ok((
+        [
+            (header::CONTENT_TYPE, HeaderValue::from_static(content_type)),
+            (
+                header::CONTENT_DISPOSITION,
+                HeaderValue::from_str(&content_disposition)?,
+            ),
+            (
+                header::CONTENT_LENGTH,
+                HeaderValue::from_str(&data.len().to_string())?,
+            ),
+        ],
+        data,
+    )
+        .into_response())
+}
+
+enum TimestampFileKind {
+    Request,
+    Response,
+}
+
+fn build_txt_log_download(log: &str, timestamp_files: &jobs::JobTimestampFiles) -> String {
+    let mut log = log.to_string();
+    if let (Some(request), Some(response)) = (&timestamp_files.request, &timestamp_files.response) {
+        log.push_str(&format!(
+            "\nTimestampRequestBase64: {}\nTimestampResponseBase64: {}\n",
+            STANDARD.encode(request),
+            STANDARD.encode(response)
+        ));
+        log.push_str(erase::SECURE_ERASE_SIGNATURE_EXPLANATION);
+    }
+
+    log
 }
 
 async fn partition_mount_post(AxumPath(device): AxumPath<String>) -> Result<Redirect, AppError> {
