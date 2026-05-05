@@ -6,7 +6,7 @@
 {% if has_error and error_message %}
 <p class="muted">{{ error_message }}</p>
 {% endif %}
-<form class="plan-form" method="post" action="/setup">
+<form class="form-stack" method="post" action="/setup">
     <p>
         <label for="setup_name">Username</label><br />
         <input id="setup_name" name="name" type="text" required />

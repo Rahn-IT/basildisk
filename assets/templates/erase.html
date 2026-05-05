@@ -33,7 +33,7 @@
 </dl>
 
 {% if disk.erase_type != "None" %}
-<form class="plan-form" method="post" action="/erase/{{ disk.device }}">
+<form class="form-stack" method="post" action="/erase/{{ disk.device }}">
     <input type="hidden" name="timestamp" value="{{ timestamp }}" />
     <label for="serial">Type the serial number to confirm</label>
     <input id="serial" type="text" name="serial" autocomplete="off" required />
