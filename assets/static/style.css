@@ -545,10 +545,10 @@ input[type="submit"].btn {
 }
 
 .partition-actions {
-    display: flex;
-    justify-content: flex-end;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(6.5rem, max-content));
+    justify-content: end;
     gap: 0.4rem;
-    flex-wrap: wrap;
     margin-top: 0.45rem;
 }
 
@@ -603,15 +603,11 @@ input[type="submit"].btn {
     gap: 0.55rem;
 }
 
-.browse-row,
-.browse-entry-link {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 1rem;
-}
-
 .browse-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 7rem 8rem;
+    align-items: center;
+    gap: 1rem;
     border: 1px solid var(--line);
     border-radius: 8px;
     padding: 0.75rem 0.85rem;
@@ -619,22 +615,21 @@ input[type="submit"].btn {
     color: var(--text);
 }
 
-.browse-entry-link {
-    flex: 1;
+.browse-entry-name {
     min-width: 0;
     color: var(--text);
 }
 
-.browse-entry-link:hover {
+.browse-entry-name:hover {
     text-decoration: none;
 }
 
-.browse-row:has(.browse-entry-link:hover) {
+.browse-row:has(.browse-entry-name:hover) {
     box-shadow: var(--hover-shadow);
 }
 
 .browse-row small,
-.browse-row span {
+.browse-entry-size {
     color: var(--muted);
 }
 
@@ -643,16 +638,20 @@ input[type="submit"].btn {
     margin-top: 0.2rem;
 }
 
-.browse-file-actions {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    flex-shrink: 0;
+.browse-entry-size {
+    text-align: right;
 }
 
-.btn-small {
-    padding: 0.35rem 0.65rem;
-    font-size: 0.85rem;
+.browse-entry-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    min-height: 2.25rem;
+}
+
+.browse-action-btn {
+    width: 8rem;
+    text-align: center;
 }
 
 .job-log {
