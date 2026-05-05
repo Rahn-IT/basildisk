@@ -1,4 +1,7 @@
-use std::fmt::Display;
+use std::{
+    fmt::Display,
+    path::{Path, PathBuf},
+};
 
 use hdparm::{Hdparm, HdparmError};
 use nvme::{Nvme, NvmeError};
@@ -245,10 +248,32 @@ Finished at: {finished_at}
 }
 
 async fn refresh_partition_table(device: &str) {
-    match Command::new("partprobe").arg(device).status().await {
-        Ok(status) if status.success() => {}
-        Ok(status) => println!("partprobe failed for {device}: {status}"),
+    let device_path = device_path(device);
+    match Command::new("partprobe").arg(&device_path).output().await {
+        Ok(output) if output.status.success() => {}
+        Ok(output) => {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            println!(
+                "partprobe failed for {}: {}{}",
+                device_path.display(),
+                output.status,
+                if stderr.is_empty() {
+                    String::new()
+                } else {
+                    format!(": {stderr}")
+                }
+            );
+        }
         Err(err) => println!("partprobe failed for {device}: {err}"),
+    }
+}
+
+fn device_path(device: &str) -> PathBuf {
+    let path = Path::new(device);
+    if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        Path::new("/dev").join(device)
     }
 }
 
