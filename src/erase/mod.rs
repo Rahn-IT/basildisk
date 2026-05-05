@@ -6,7 +6,7 @@ use serde::Serialize;
 use sha2::{Digest, Sha256};
 use shred::Shred;
 use thiserror::Error;
-use tokio::sync::broadcast;
+use tokio::{process::Command, sync::broadcast};
 
 use crate::{
     disk_info::{ConnectionType, DiskType},
@@ -150,6 +150,7 @@ impl Job for EraseJob {
         self,
         logger: broadcast::Sender<String>,
     ) -> Result<(), Box<dyn std::error::Error + Send>> {
+        let device = self.device.clone();
         let started_at = jobs::format_unix_timestamp(jobs::unix_now());
         let intro = format!(
             "
@@ -235,7 +236,19 @@ Finished at: {finished_at}
 
         logger.send(outro).unwrap();
 
+        if result.is_ok() {
+            refresh_partition_table(&device).await;
+        }
+
         result
+    }
+}
+
+async fn refresh_partition_table(device: &str) {
+    match Command::new("partprobe").arg(device).status().await {
+        Ok(status) if status.success() => {}
+        Ok(status) => println!("partprobe failed for {device}: {status}"),
+        Err(err) => println!("partprobe failed for {device}: {err}"),
     }
 }
 
