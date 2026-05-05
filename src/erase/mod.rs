@@ -26,8 +26,6 @@ Signature explanation:
 The SHA256 value above is calculated over the bytes from the first '=' character in this log through the last '=' character in the secure erase footer. This includes the secure erase header, all recorded erase output, and the success footer. It excludes the Basildisk ASCII banner above the header and excludes the SHA256 line, timestamp availability line, TimestampRequestBase64, TimestampResponseBase64, and this explanation text.
 
 The timestamp request is an RFC 3161 TimeStampRequest for the SHA256 digest above. The timestamp response is an RFC 3161 TimeStampResponse from FreeTSA for that request. To verify it manually, decode TimestampRequestBase64 to a .tsq file and TimestampResponseBase64 to a .tsr file, then verify the .tsr against the .tsq with FreeTSA's CA certificate and TSA certificate from https://freetsa.org/. The same two files can also be uploaded to FreeTSA's online verifier.
-
-Basildisk was created by Rahn-IT (https://it-rahn.de)
 "#;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -233,6 +231,7 @@ Selected Erasure Method: {}
 =================================================
 Errors detected during secure erase!
 Finished at: {finished_at}
+Basildisk was created by Rahn-IT (https://it-rahn.de)
 =================================================
 {err}
 "
@@ -243,6 +242,7 @@ Finished at: {finished_at}
 =================================================
 Secure Erase was successful!
 Finished at: {finished_at}
+Basildisk was created by Rahn-IT (https://it-rahn.de)
 ================================================="
             )
         };
