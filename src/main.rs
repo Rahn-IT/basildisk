@@ -6,6 +6,7 @@ use std::{
 
 use axum::{
     Router,
+    body::Body,
     extract::{
         Path as AxumPath, Query, State,
         ws::{Message, WebSocketUpgrade},
@@ -15,6 +16,7 @@ use axum::{
     response::{Html, IntoResponse, Redirect, Response},
     routing::{get, post},
 };
+use axum_extra::body::AsyncReadBody;
 use axum_extra::extract::Form;
 use serde::{Deserialize, Serialize};
 use sqlx::{Sqlite, SqlitePool, migrate::MigrateDatabase};
@@ -154,6 +156,7 @@ fn router() -> Router<AppState> {
         .route("/jobs", get(jobs_index))
         .route("/jobs/{id}", get(job_detail))
         .route("/jobs/{id}/log", get(job_log))
+        .route("/download/{device}/{*path}", get(download_path))
         .route("/browse/{device}", get(browse_root))
         .route("/browse/{device}/{*path}", get(browse_path))
         .route("/partitions/{device}/mount", post(partition_mount_post))
@@ -465,6 +468,59 @@ async fn render_browse(
         .expect("template is loaded");
     let rendered = template.render(view)?;
     Ok(Html(rendered))
+}
+
+async fn download_path(
+    AxumPath((device, path)): AxumPath<(String, String)>,
+) -> Result<Response, AppError> {
+    let download = browse::download(&device, &path)
+        .await
+        .map_err(|err| match err {
+            browse::BrowseError::EscapesRoot => {
+                AppError::forbidden("Download path escapes the mounted directory.")
+            }
+            browse::BrowseError::NotFile => {
+                AppError::not_found_for("File", format!("No downloadable file exists at {path}."))
+            }
+            _ => AppError::from(err),
+        })?;
+    let file = tokio::fs::File::open(&download.path).await?;
+    let body = Body::new(AsyncReadBody::new(file));
+    let content_disposition = format!(
+        "attachment; filename=\"{}\"",
+        escape_header_filename(&download.name)
+    );
+
+    Ok((
+        [
+            (
+                header::CONTENT_TYPE,
+                HeaderValue::from_static(mime::APPLICATION_OCTET_STREAM.as_ref()),
+            ),
+            (
+                header::CONTENT_DISPOSITION,
+                HeaderValue::from_str(&content_disposition)?,
+            ),
+            (
+                header::CONTENT_LENGTH,
+                HeaderValue::from_str(&download.size.to_string())?,
+            ),
+        ],
+        body,
+    )
+        .into_response())
+}
+
+fn escape_header_filename(filename: &str) -> String {
+    filename
+        .chars()
+        .filter(|character| character.is_ascii() && !character.is_control())
+        .flat_map(|character| match character {
+            '"' => "\\\"".chars().collect::<Vec<_>>(),
+            '\\' => "\\\\".chars().collect(),
+            _ => vec![character],
+        })
+        .collect()
 }
 
 async fn find_disk(device: &str) -> Result<Disk, AppError> {

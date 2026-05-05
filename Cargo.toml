@@ -7,7 +7,7 @@ edition = "2024"
 anyhow = "1.0.102"
 argon2 = { version = "0.5.3", features = ["std"] }
 axum = { version = "0.8.8", features = ["ws"] }
-axum-extra = { version = "0.12.5", features = ["cookie", "form"] }
+axum-extra = { version = "0.12.5", features = ["async-read-body", "cookie", "form"] }
 mime = "0.3.17"
 minijinja = "2.14.0"
 minijinja-embed = "2.14.0"
@@ -17,7 +17,8 @@ sqlx = { version = "0.8.6", features = ["runtime-tokio", "sqlite", "uuid"] }
 thiserror = "2.0.18"
 time = { version = "0.3.47", features = ["formatting"] }
 tokio = { version = "1.49.0", features = ["full"] }
-uuid = { version = "1.19.0", features = ["v4", "serde"] }
+uuid = { version = "1.19.1", features = ["v4", "serde"] }
+zip = { version = "8.6.0", default-features = false, features = ["deflate"] }
 
 [build-dependencies]
 minijinja-embed = "2.14.0"

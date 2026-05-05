@@ -615,7 +615,7 @@ input[type="submit"].btn {
     color: var(--text);
 }
 
-.browse-row:hover {
+a.browse-row:hover {
     text-decoration: none;
     box-shadow: var(--hover-shadow);
 }
@@ -628,6 +628,18 @@ input[type="submit"].btn {
 .browse-row small {
     display: block;
     margin-top: 0.2rem;
+}
+
+.browse-file-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-shrink: 0;
+}
+
+.btn-small {
+    padding: 0.35rem 0.65rem;
+    font-size: 0.85rem;
 }
 
 .job-log {
