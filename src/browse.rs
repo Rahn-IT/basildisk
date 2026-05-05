@@ -1,9 +1,18 @@
 use std::path::{Path, PathBuf};
 
+use axum::{
+    Router,
+    body::Body,
+    extract::{Path as AxumPath, State},
+    http::{HeaderValue, header},
+    response::{Html, IntoResponse, Response},
+    routing::get,
+};
+use axum_extra::body::AsyncReadBody;
 use serde::Serialize;
 use thiserror::Error;
 
-use crate::mount;
+use crate::{AppState, error::AppError, mount, users, zip_download};
 
 #[derive(Debug, Error)]
 pub enum BrowseError {
@@ -49,6 +58,117 @@ pub struct DownloadEntry {
 pub enum DownloadKind {
     File,
     Folder,
+}
+
+pub fn router() -> Router<AppState> {
+    Router::new()
+        .route("/download/{device}/{*path}", get(download_path))
+        .route("/browse/{device}", get(browse_root))
+        .route("/browse/{device}/{*path}", get(browse_path))
+}
+
+async fn browse_root(
+    State(state): State<AppState>,
+    current_user: users::CurrentUser,
+    AxumPath(device): AxumPath<String>,
+) -> Result<Html<String>, AppError> {
+    render_browse(&state.jinja, &device, "", current_user.is_admin).await
+}
+
+async fn browse_path(
+    State(state): State<AppState>,
+    current_user: users::CurrentUser,
+    AxumPath((device, path)): AxumPath<(String, String)>,
+) -> Result<Html<String>, AppError> {
+    render_browse(&state.jinja, &device, &path, current_user.is_admin).await
+}
+
+async fn render_browse(
+    jinja: &minijinja::Environment<'static>,
+    device: &str,
+    path: &str,
+    is_admin: bool,
+) -> Result<Html<String>, AppError> {
+    let view = list(device, path, is_admin).await?;
+    let template = jinja
+        .get_template("browse.html")
+        .expect("template is loaded");
+    let rendered = template.render(view)?;
+    Ok(Html(rendered))
+}
+
+async fn download_path(
+    AxumPath((device, path)): AxumPath<(String, String)>,
+) -> Result<Response, AppError> {
+    let download = download(&device, &path).await.map_err(|err| match err {
+        BrowseError::EscapesRoot => {
+            AppError::forbidden("Download path escapes the mounted directory.")
+        }
+        BrowseError::NotDownloadable => AppError::not_found_for(
+            "Download",
+            format!("No downloadable file or folder exists at {path}."),
+        ),
+        _ => AppError::from(err),
+    })?;
+
+    match download.kind {
+        DownloadKind::File => file_download_response(download).await,
+        DownloadKind::Folder => folder_download_response(download),
+    }
+}
+
+async fn file_download_response(download: DownloadEntry) -> Result<Response, AppError> {
+    let file = tokio::fs::File::open(&download.path).await?;
+    let body = Body::new(AsyncReadBody::new(file));
+    let content_disposition = format!(
+        "attachment; filename=\"{}\"",
+        escape_header_filename(&download.name)
+    );
+
+    Ok((
+        [
+            (
+                header::CONTENT_TYPE,
+                HeaderValue::from_static(mime::APPLICATION_OCTET_STREAM.as_ref()),
+            ),
+            (
+                header::CONTENT_DISPOSITION,
+                HeaderValue::from_str(&content_disposition)?,
+            ),
+            (
+                header::CONTENT_LENGTH,
+                HeaderValue::from_str(&download.size.to_string())?,
+            ),
+        ],
+        body,
+    )
+        .into_response())
+}
+
+fn folder_download_response(download: DownloadEntry) -> Result<Response, AppError> {
+    let filename = format!("{}.zip", download.name);
+    let body = Body::new(AsyncReadBody::new(zip_download::folder_reader(
+        download.path,
+    )));
+    let content_disposition = format!(
+        "attachment; filename=\"{}\"",
+        escape_header_filename(&filename)
+    );
+
+    Ok((
+        [
+            (
+                header::CONTENT_TYPE,
+                HeaderValue::from_static("application/zip"),
+            ),
+            (
+                header::CONTENT_DISPOSITION,
+                HeaderValue::from_str(&content_disposition)?,
+            ),
+        ],
+        body,
+    )
+        .into_response())
 }
 
 pub async fn list(
@@ -239,4 +359,16 @@ fn format_size(size: u64) -> String {
     } else {
         format!("{} B", size)
     }
+}
+
+fn escape_header_filename(filename: &str) -> String {
+    filename
+        .chars()
+        .filter(|character| character.is_ascii() && !character.is_control())
+        .flat_map(|character| match character {
+            '"' => "\\\"".chars().collect::<Vec<_>>(),
+            '\\' => "\\\\".chars().collect(),
+            _ => vec![character],
+        })
+        .collect()
 }
