@@ -1,78 +1,107 @@
-use std::{
-    io::{self, Cursor, Read, Write},
-    path::{Path, PathBuf},
-    pin::Pin,
-    task::{Context, Poll},
+use std::path::{Path, PathBuf};
+
+use async_zip::{
+    Compression, DeflateOption, ZipEntryBuilder, base::write::ZipFileWriter,
+    tokio::write::ZipFileWriter as TokioZipFileWriter,
 };
+use futures_lite::io::AsyncWriteExt;
+use tokio::io::{AsyncReadExt, DuplexStream};
 
-use axum::body::Bytes;
-use tokio::{io::ReadBuf, sync::mpsc};
-use zip::{CompressionMethod, ZipWriter, write::SimpleFileOptions};
+pub const STREAM_BUFFER_SIZE: usize = 1024 * 1024;
 
-pub fn folder_reader(folder: PathBuf) -> ChannelReader {
-    let (sender, receiver) = mpsc::channel(8);
-    let error_sender = sender.clone();
+pub fn folder_reader(folder: PathBuf) -> DuplexStream {
+    let (reader, writer) = tokio::io::duplex(STREAM_BUFFER_SIZE);
 
-    tokio::task::spawn_blocking(move || {
-        if let Err(err) = write_folder_zip(&folder, ChannelWriter { sender }) {
-            let _ = error_sender.blocking_send(Err(io::Error::other(err.to_string())));
+    tokio::spawn(async move {
+        if let Err(err) = write_folder_zip(&folder, writer).await {
+            eprintln!(
+                "Error streaming ZIP download for {}: {err}",
+                folder.display()
+            );
         }
     });
 
-    ChannelReader::new(receiver)
+    reader
 }
 
-fn write_folder_zip(folder: &Path, writer: ChannelWriter) -> anyhow::Result<()> {
-    let root = std::fs::canonicalize(folder)?;
+async fn write_folder_zip(folder: &Path, writer: DuplexStream) -> anyhow::Result<()> {
+    let root = tokio::fs::canonicalize(folder).await?;
     let archive_root = root.parent().unwrap_or(&root).to_path_buf();
-    let mut zip = ZipWriter::new_stream(writer).set_auto_large_file();
-    add_path_to_zip(&mut zip, &root, &archive_root, &root)?;
-    zip.finish()?;
+    let mut zip = ZipFileWriter::with_tokio(writer).force_zip64();
+
+    add_paths_to_zip(&mut zip, &root, &archive_root, &root).await?;
+    zip.close().await?;
+
     Ok(())
 }
 
-fn add_path_to_zip(
-    zip: &mut ZipWriter<zip::write::StreamWriter<ChannelWriter>>,
-    path: &Path,
+async fn add_paths_to_zip(
+    zip: &mut TokioZipFileWriter<DuplexStream>,
+    root: &Path,
     archive_root: &Path,
     allowed_root: &Path,
 ) -> anyhow::Result<()> {
-    let metadata = std::fs::symlink_metadata(path)?;
-    if metadata.file_type().is_symlink() {
-        return Ok(());
-    }
+    let mut pending = vec![root.to_path_buf()];
 
-    let canonical_path = std::fs::canonicalize(path)?;
-    if !canonical_path.starts_with(allowed_root) {
-        return Ok(());
-    }
-
-    let options = SimpleFileOptions::default()
-        .compression_method(CompressionMethod::Stored)
-        // .compression_level(Some(3))
-        .unix_permissions(if metadata.is_dir() { 0o755 } else { 0o644 });
-    let archive_name = zip_archive_name(path, archive_root)?;
-
-    if metadata.is_dir() {
-        zip.add_directory(format!("{archive_name}/"), options)?;
-        let mut entries = std::fs::read_dir(path)?.collect::<Result<Vec<_>, _>>()?;
-        entries.sort_by_key(|entry| entry.file_name());
-        for entry in entries {
-            add_path_to_zip(zip, &entry.path(), archive_root, allowed_root)?;
+    while let Some(path) = pending.pop() {
+        let metadata = tokio::fs::symlink_metadata(&path).await?;
+        if metadata.file_type().is_symlink() {
+            continue;
         }
-    } else if metadata.is_file() {
-        zip.start_file(archive_name, options)?;
-        let mut file = std::fs::File::open(path)?;
-        let mut buffer = [0; 1024 * 1024];
-        loop {
-            let bytes_read = file.read(&mut buffer)?;
-            if bytes_read == 0 {
-                break;
+
+        let canonical_path = tokio::fs::canonicalize(&path).await?;
+        if !canonical_path.starts_with(allowed_root) {
+            continue;
+        }
+
+        let archive_name = zip_archive_name(&path, archive_root)?;
+        if metadata.is_dir() {
+            add_directory_to_zip(zip, &archive_name).await?;
+
+            let mut children = Vec::new();
+            let mut entries = tokio::fs::read_dir(&path).await?;
+            while let Some(entry) = entries.next_entry().await? {
+                children.push(entry.path());
             }
-            zip.write_all(&buffer[..bytes_read])?;
+            children.sort_by_key(|path| path.file_name().map(|name| name.to_os_string()));
+            pending.extend(children.into_iter().rev());
+        } else if metadata.is_file() {
+            add_file_to_zip(zip, &path, &archive_name).await?;
         }
     }
 
+    Ok(())
+}
+
+async fn add_directory_to_zip(
+    zip: &mut TokioZipFileWriter<DuplexStream>,
+    archive_name: &str,
+) -> anyhow::Result<()> {
+    let entry = ZipEntryBuilder::new(format!("{archive_name}/").into(), Compression::Stored);
+    zip.write_entry_whole(entry, &[]).await?;
+    Ok(())
+}
+
+async fn add_file_to_zip(
+    zip: &mut TokioZipFileWriter<DuplexStream>,
+    path: &Path,
+    archive_name: &str,
+) -> anyhow::Result<()> {
+    let entry = ZipEntryBuilder::new(archive_name.to_string().into(), Compression::Deflate)
+        .deflate_option(DeflateOption::Fast);
+    let mut entry_writer = zip.write_entry_stream(entry).await?;
+    let mut file = tokio::fs::File::open(path).await?;
+    let mut buffer = vec![0; STREAM_BUFFER_SIZE];
+
+    loop {
+        let bytes_read = file.read(&mut buffer).await?;
+        if bytes_read == 0 {
+            break;
+        }
+        entry_writer.write_all(&buffer[..bytes_read]).await?;
+    }
+
+    entry_writer.close().await?;
     Ok(())
 }
 
@@ -86,71 +115,4 @@ fn zip_archive_name(path: &Path, archive_root: &Path) -> anyhow::Result<String> 
         })
         .collect::<Vec<_>>()
         .join("/"))
-}
-
-struct ChannelWriter {
-    sender: mpsc::Sender<io::Result<Bytes>>,
-}
-
-impl Write for ChannelWriter {
-    fn write(&mut self, buffer: &[u8]) -> io::Result<usize> {
-        if buffer.is_empty() {
-            return Ok(0);
-        }
-
-        self.sender
-            .blocking_send(Ok(Bytes::copy_from_slice(buffer)))
-            .map_err(|_| io::Error::new(io::ErrorKind::BrokenPipe, "download stream closed"))?;
-        Ok(buffer.len())
-    }
-
-    fn flush(&mut self) -> io::Result<()> {
-        Ok(())
-    }
-}
-
-pub struct ChannelReader {
-    receiver: mpsc::Receiver<io::Result<Bytes>>,
-    current: Cursor<Bytes>,
-}
-
-impl ChannelReader {
-    fn new(receiver: mpsc::Receiver<io::Result<Bytes>>) -> Self {
-        Self {
-            receiver,
-            current: Cursor::new(Bytes::new()),
-        }
-    }
-}
-
-impl tokio::io::AsyncRead for ChannelReader {
-    fn poll_read(
-        mut self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-        output: &mut ReadBuf<'_>,
-    ) -> Poll<io::Result<()>> {
-        loop {
-            let remaining = self.current.get_ref().len() as u64 - self.current.position();
-            if remaining > 0 {
-                let bytes_to_copy = remaining.min(output.remaining() as u64) as usize;
-                if bytes_to_copy == 0 {
-                    return Poll::Ready(Ok(()));
-                }
-
-                let position = self.current.position() as usize;
-                output.put_slice(&self.current.get_ref()[position..position + bytes_to_copy]);
-                self.current.set_position((position + bytes_to_copy) as u64);
-                return Poll::Ready(Ok(()));
-            }
-
-            match Pin::new(&mut self.receiver).poll_recv(cx) {
-                Poll::Ready(Some(Ok(bytes))) => {
-                    self.current = Cursor::new(bytes);
-                }
-                Poll::Ready(Some(Err(err))) => return Poll::Ready(Err(err)),
-                Poll::Ready(None) => return Poll::Ready(Ok(())),
-                Poll::Pending => return Poll::Pending,
-            }
-        }
-    }
 }

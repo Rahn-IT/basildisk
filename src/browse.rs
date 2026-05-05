@@ -11,6 +11,7 @@ use axum::{
 use axum_extra::body::AsyncReadBody;
 use serde::Serialize;
 use thiserror::Error;
+use tokio_util::io::ReaderStream;
 
 use crate::{AppState, error::AppError, mount, users, zip_download};
 
@@ -147,9 +148,11 @@ async fn file_download_response(download: DownloadEntry) -> Result<Response, App
 
 fn folder_download_response(download: DownloadEntry) -> Result<Response, AppError> {
     let filename = format!("{}.zip", download.name);
-    let body = Body::new(AsyncReadBody::new(zip_download::folder_reader(
-        download.path,
-    )));
+    let stream = ReaderStream::with_capacity(
+        zip_download::folder_reader(download.path),
+        zip_download::STREAM_BUFFER_SIZE,
+    );
+    let body = Body::from_stream(stream);
     let content_disposition = format!(
         "attachment; filename=\"{}\"",
         escape_header_filename(&filename)
