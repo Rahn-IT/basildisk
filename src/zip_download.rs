@@ -87,7 +87,8 @@ async fn add_file_to_zip(
     path: &Path,
     archive_name: &str,
 ) -> anyhow::Result<()> {
-    let entry = ZipEntryBuilder::new(archive_name.to_string().into(), Compression::Stored);
+    let entry = ZipEntryBuilder::new(archive_name.to_string().into(), Compression::Deflate)
+        .deflate_option(DeflateOption::Fast);
     let mut entry_writer = zip.write_entry_stream(entry).await?;
     let file = tokio::fs::File::open(path).await?;
     let mut reader = BufReader::with_capacity(STREAM_BUFFER_SIZE, file);
