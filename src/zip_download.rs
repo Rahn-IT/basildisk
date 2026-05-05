@@ -4,8 +4,8 @@ use async_zip::{
     Compression, DeflateOption, ZipEntryBuilder, base::write::ZipFileWriter,
     tokio::write::ZipFileWriter as TokioZipFileWriter,
 };
-use futures_lite::io::AsyncWriteExt;
-use tokio::io::{AsyncReadExt, DuplexStream};
+use tokio::io::{BufReader, DuplexStream};
+use tokio_util::compat::FuturesAsyncWriteCompatExt;
 
 pub const STREAM_BUFFER_SIZE: usize = 1024 * 1024;
 
@@ -87,19 +87,13 @@ async fn add_file_to_zip(
     path: &Path,
     archive_name: &str,
 ) -> anyhow::Result<()> {
-    let entry = ZipEntryBuilder::new(archive_name.to_string().into(), Compression::Deflate)
-        .deflate_option(DeflateOption::Fast);
+    let entry = ZipEntryBuilder::new(archive_name.to_string().into(), Compression::Stored);
     let mut entry_writer = zip.write_entry_stream(entry).await?;
-    let mut file = tokio::fs::File::open(path).await?;
-    let mut buffer = vec![0; STREAM_BUFFER_SIZE];
-
-    loop {
-        let bytes_read = file.read(&mut buffer).await?;
-        if bytes_read == 0 {
-            break;
-        }
-        entry_writer.write_all(&buffer[..bytes_read]).await?;
-    }
+    let file = tokio::fs::File::open(path).await?;
+    let mut reader = BufReader::with_capacity(STREAM_BUFFER_SIZE, file);
+    let mut writer = (&mut entry_writer).compat_write();
+    tokio::io::copy_buf(&mut reader, &mut writer).await?;
+    tokio::io::AsyncWriteExt::shutdown(&mut writer).await?;
 
     entry_writer.close().await?;
     Ok(())
