@@ -48,8 +48,8 @@ fn add_path_to_zip(
     }
 
     let options = SimpleFileOptions::default()
-        .compression_method(CompressionMethod::Deflated)
-        .compression_level(Some(3))
+        .compression_method(CompressionMethod::Stored)
+        // .compression_level(Some(3))
         .unix_permissions(if metadata.is_dir() { 0o755 } else { 0o644 });
     let archive_name = zip_archive_name(path, archive_root)?;
 
