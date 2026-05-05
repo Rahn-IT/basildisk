@@ -2,6 +2,10 @@
 
 {% block title %}Job Log{% endblock %}
 
+{% block top_actions %}
+<a class="btn" href="/jobs/{{ job.id }}/log.txt">Download TXT</a>
+{% endblock %}
+
 {% block content %}
 <dl class="metadata-grid">
     <div>

@@ -161,6 +161,7 @@ fn router() -> Router<AppState> {
         .route("/jobs", get(jobs_index))
         .route("/jobs/{id}", get(job_detail))
         .route("/jobs/{id}/log", get(job_log))
+        .route("/jobs/{id}/log.txt", get(job_log_download))
         .route("/download/{device}/{*path}", get(download_path))
         .route("/browse/{device}", get(browse_root))
         .route("/browse/{device}/{*path}", get(browse_path))
@@ -421,6 +422,42 @@ async fn job_log(
                 }
             }
         })
+        .into_response())
+}
+
+async fn job_log_download(
+    State(state): State<AppState>,
+    AxumPath(id): AxumPath<String>,
+) -> Result<Response, AppError> {
+    let job = state
+        .job_manager
+        .get_job_info(&id, &state.db)
+        .await?
+        .ok_or_else(|| AppError::not_found_for("Job", format!("No job exists for id: {id}")))?;
+    let (log, _) = state
+        .job_manager
+        .subscribe_log(&id, &state.db)
+        .await?
+        .ok_or_else(|| AppError::not_found_for("Job", format!("No job exists for id: {id}")))?;
+    let filename = format!("secure-erase-protocol-{}-{}.txt", job.disk, job.id);
+    let content_disposition = format!(
+        "attachment; filename=\"{}\"",
+        escape_header_filename(&filename)
+    );
+
+    Ok((
+        [
+            (
+                header::CONTENT_TYPE,
+                HeaderValue::from_static("text/plain; charset=utf-8"),
+            ),
+            (
+                header::CONTENT_DISPOSITION,
+                HeaderValue::from_str(&content_disposition)?,
+            ),
+        ],
+        log,
+    )
         .into_response())
 }
 
