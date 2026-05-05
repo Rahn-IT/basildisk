@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use async_zip::{
-    Compression, DeflateOption, ZipEntryBuilder, base::write::ZipFileWriter,
+    Compression, ZipEntryBuilder, base::write::ZipFileWriter,
     tokio::write::ZipFileWriter as TokioZipFileWriter,
 };
 use tokio::io::{BufReader, DuplexStream};

@@ -3,13 +3,14 @@ use std::fmt::Display;
 use hdparm::{Hdparm, HdparmError};
 use nvme::{Nvme, NvmeError};
 use serde::Serialize;
+use sha2::{Digest, Sha256};
 use shred::Shred;
 use thiserror::Error;
 use tokio::sync::broadcast;
 
 use crate::{
     disk_info::{ConnectionType, DiskType},
-    jobs::Job,
+    jobs::{self, Job},
 };
 
 pub mod hdparm;
@@ -141,10 +142,15 @@ impl Job for EraseJob {
         format!("{} for {}: {}", self.erase_type, self.model, self.serial)
     }
 
+    fn final_log_success_data(&self) -> Option<fn(&str) -> Option<String>> {
+        Some(final_log_success_data)
+    }
+
     async fn run(
         self,
         logger: broadcast::Sender<String>,
     ) -> Result<(), Box<dyn std::error::Error + Send>> {
+        let started_at = jobs::format_unix_timestamp(jobs::unix_now());
         let intro = format!(
             "
 Starting Secure Disk Erasure
@@ -152,6 +158,7 @@ Starting Secure Disk Erasure
 Model: {}
 Serial: {}
 Device Name: {}
+Started at: {}
 =================================================
 Connected via: {}
 Detected Disk Type: {}
@@ -161,6 +168,7 @@ Selected Erasure Method: {}
             self.model,
             self.serial,
             self.device,
+            started_at,
             self.connection_type,
             self.disk_type,
             self.erase_type
@@ -204,26 +212,46 @@ Selected Erasure Method: {}
             EraseType::None => Ok(()),
         };
 
+        let finished_at = jobs::format_unix_timestamp(jobs::unix_now());
         let outro = if let Err(err) = &result {
             format!(
                 "
 =================================================
 Errors detected during secure erase!
+Finished at: {finished_at}
 =================================================
 {err}
 "
             )
         } else {
-            "
+            format!(
+                "
 =================================================
 Secure Erase was successful!
-=================================================
-            "
-            .to_string()
+Finished at: {finished_at}
+================================================="
+            )
         };
 
         logger.send(outro).unwrap();
 
         result
     }
+}
+
+fn final_log_success_data(log: &str) -> Option<String> {
+    let hash = hash_signed_log_content(log)?;
+    Some(format!("\nSHA256: {hash}\n"))
+}
+
+fn hash_signed_log_content(log: &str) -> Option<String> {
+    let first_separator = log.find('=')?;
+    let last_separator = log.rfind('=')?;
+    if first_separator > last_separator {
+        return None;
+    }
+
+    let signed_content = &log.as_bytes()[first_separator..=last_separator];
+    let digest = Sha256::digest(signed_content);
+    Some(format!("{digest:x}"))
 }

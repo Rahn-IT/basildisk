@@ -239,12 +239,7 @@ impl JobManager {
 
         let (send, recv) = broadcast::channel(3);
 
-        let started_at = unix_now();
-        let log = Arc::new(std::sync::Mutex::new(format!(
-            "{}Started at: {}\n",
-            BANNER,
-            format_unix_timestamp(started_at)
-        )));
+        let log = Arc::new(std::sync::Mutex::new(BANNER.to_string()));
 
         let rjob = RunningJob {
             info: JobInfo {
@@ -267,7 +262,7 @@ impl JobManager {
             let _drive_lock = drive_lock;
             let logger = send;
             let mut log_receiver = logger.subscribe();
-            let job = job;
+            let final_log_success_data = job.final_log_success_data();
 
             let job_handle = tokio::spawn(async move { job.run(logger).await });
 
@@ -276,8 +271,6 @@ impl JobManager {
             }
 
             let result = job_handle.await;
-            let ended_at = unix_now();
-
             match result {
                 Err(err) => log
                     .lock()
@@ -287,12 +280,15 @@ impl JobManager {
                     .lock()
                     .unwrap()
                     .push_str(&format!("Job failed: {err}\n")),
-                Ok(Ok(_)) => {}
+                Ok(Ok(_)) => {
+                    if let Some(final_log_success_data) = final_log_success_data {
+                        let mut log = log.lock().unwrap();
+                        if let Some(extra) = final_log_success_data(&log) {
+                            log.push_str(&extra);
+                        }
+                    }
+                }
             }
-            log.lock().unwrap().push_str(&format!(
-                "Finished at: {}\n",
-                format_unix_timestamp(ended_at)
-            ));
 
             let rjob = {
                 let mut running_jobs = self2.running_jobs.lock().unwrap();
@@ -320,14 +316,14 @@ impl JobManager {
     }
 }
 
-fn unix_now() -> i64 {
+pub(crate) fn unix_now() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_secs() as i64)
         .unwrap_or(0)
 }
 
-fn format_unix_timestamp(timestamp: i64) -> String {
+pub(crate) fn format_unix_timestamp(timestamp: i64) -> String {
     OffsetDateTime::from_unix_timestamp(timestamp)
         .ok()
         .and_then(|datetime| datetime.format(&Rfc3339).ok())
@@ -337,6 +333,9 @@ fn format_unix_timestamp(timestamp: i64) -> String {
 pub trait Job: Send + Sync + 'static {
     fn get_device(&self) -> &str;
     fn get_name(&self) -> String;
+    fn final_log_success_data(&self) -> Option<fn(&str) -> Option<String>> {
+        None
+    }
     fn run(
         self,
         logger: broadcast::Sender<String>,
