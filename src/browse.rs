@@ -9,8 +9,8 @@ use crate::mount;
 pub enum BrowseError {
     #[error("path escapes mount root")]
     EscapesRoot,
-    #[error("path is not a file")]
-    NotFile,
+    #[error("path is not a file or folder")]
+    NotDownloadable,
     #[error("io error: {0}")]
     Io(#[from] std::io::Error),
     #[error("mount error: {0}")]
@@ -37,10 +37,17 @@ pub struct BrowseEntry {
 }
 
 #[derive(Debug)]
-pub struct DownloadFile {
+pub struct DownloadEntry {
     pub path: PathBuf,
     pub name: String,
+    pub kind: DownloadKind,
     pub size: u64,
+}
+
+#[derive(Debug)]
+pub enum DownloadKind {
+    File,
+    Folder,
 }
 
 pub async fn list(
@@ -91,23 +98,29 @@ pub async fn list(
     })
 }
 
-pub async fn download(device: &str, relative_path: &str) -> Result<DownloadFile, BrowseError> {
+pub async fn download(device: &str, relative_path: &str) -> Result<DownloadEntry, BrowseError> {
     let root = mount::mount_point_for_device(device)?;
     let root = tokio::fs::canonicalize(root).await?;
     let target = resolve_child_path(&root, relative_path).await?;
     let metadata = tokio::fs::metadata(&target).await?;
-    if !metadata.is_file() {
-        return Err(BrowseError::NotFile);
-    }
 
     let name = target
         .file_name()
         .map(|name| name.to_string_lossy().to_string())
         .unwrap_or_else(|| device.to_string());
 
-    Ok(DownloadFile {
+    let kind = if metadata.is_file() {
+        DownloadKind::File
+    } else if metadata.is_dir() {
+        DownloadKind::Folder
+    } else {
+        return Err(BrowseError::NotDownloadable);
+    };
+
+    Ok(DownloadEntry {
         path: target,
         name,
+        kind,
         size: metadata.len(),
     })
 }

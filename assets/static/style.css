@@ -603,11 +603,15 @@ input[type="submit"].btn {
     gap: 0.55rem;
 }
 
-.browse-row {
+.browse-row,
+.browse-entry-link {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 1rem;
+}
+
+.browse-row {
     border: 1px solid var(--line);
     border-radius: 8px;
     padding: 0.75rem 0.85rem;
@@ -615,8 +619,17 @@ input[type="submit"].btn {
     color: var(--text);
 }
 
-a.browse-row:hover {
+.browse-entry-link {
+    flex: 1;
+    min-width: 0;
+    color: var(--text);
+}
+
+.browse-entry-link:hover {
     text-decoration: none;
+}
+
+.browse-row:has(.browse-entry-link:hover) {
     box-shadow: var(--hover-shadow);
 }
 

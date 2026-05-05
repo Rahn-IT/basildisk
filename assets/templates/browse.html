@@ -13,16 +13,16 @@
 
 <div class="browse-list">
     {% for entry in entries %}
-    {% if entry.is_dir %}
-    <a class="browse-row" href="{{ entry.href }}">
-        <div>
+    <div class="browse-row">
+        {% if entry.is_dir %}
+        <a class="browse-entry-link" href="{{ entry.href }}">
             <strong>{{ entry.name }}</strong>
             <small>{{ entry.kind }}</small>
+        </a>
+        <div class="browse-file-actions">
+            <a class="btn btn-small" href="{{ entry.download_href }}">Download ZIP</a>
         </div>
-        <span>{{ entry.size_display }}</span>
-    </a>
-    {% else %}
-    <div class="browse-row">
+        {% else %}
         <div>
             <strong>{{ entry.name }}</strong>
             <small>{{ entry.kind }}</small>
@@ -31,8 +31,8 @@
             <span>{{ entry.size_display }}</span>
             <a class="btn btn-small" href="{{ entry.download_href }}">Download</a>
         </div>
+        {% endif %}
     </div>
-    {% endif %}
     {% else %}
     <p class="empty-state">This folder is empty.</p>
     {% endfor %}
