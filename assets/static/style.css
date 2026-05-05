@@ -603,9 +603,17 @@ input[type="submit"].btn {
     gap: 0.55rem;
 }
 
+.browse-up-actions {
+    margin-bottom: 1.1rem;
+}
+
+.browse-up-actions .btn {
+    padding-inline: 1.1rem;
+}
+
 .browse-row {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 7rem 8rem;
+    grid-template-columns: minmax(0, 1fr) 7rem 10rem;
     align-items: center;
     gap: 1rem;
     border: 1px solid var(--line);
@@ -650,7 +658,7 @@ input[type="submit"].btn {
 }
 
 .browse-action-btn {
-    width: 8rem;
+    width: 10rem;
     text-align: center;
 }
 
