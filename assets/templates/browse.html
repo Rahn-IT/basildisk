@@ -29,7 +29,9 @@
         </div>
         <div class="browse-file-actions">
             <span>{{ entry.size_display }}</span>
+            {% if entry.is_downloadable %}
             <a class="btn btn-small" href="{{ entry.download_href }}">Download</a>
+            {% endif %}
         </div>
         {% endif %}
     </div>

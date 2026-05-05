@@ -32,6 +32,7 @@ pub struct BrowseEntry {
     pub href: String,
     pub download_href: String,
     pub is_dir: bool,
+    pub is_downloadable: bool,
     pub kind: String,
     pub size_display: String,
 }
@@ -63,16 +64,20 @@ pub async fn list(
     let mut read_dir = tokio::fs::read_dir(&target).await?;
     while let Some(entry) = read_dir.next_entry().await? {
         let file_name = entry.file_name().to_string_lossy().to_string();
-        let metadata = entry.metadata().await?;
+        let metadata = tokio::fs::symlink_metadata(entry.path()).await?;
+        let file_type = metadata.file_type();
         let is_dir = metadata.is_dir();
+        let is_file = metadata.is_file();
+        let is_symlink = file_type.is_symlink();
         let entry_relative_path = append_relative_path(relative_path, &file_name);
 
         entries.push(BrowseEntry {
             name: file_name,
-            href: format!("/browse/{device}/{entry_relative_path}"),
-            download_href: format!("/download/{device}/{entry_relative_path}"),
+            href: browse_url(device, &entry_relative_path),
+            download_href: download_url(device, &entry_relative_path),
             is_dir,
-            kind: if is_dir { "Folder" } else { "File" }.to_string(),
+            is_downloadable: is_dir || is_file,
+            kind: entry_kind(is_dir, is_file, is_symlink).to_string(),
             size_display: if is_dir {
                 String::new()
             } else {
@@ -158,9 +163,60 @@ fn parent_url(device: &str, relative_path: &str) -> Option<String> {
     let parent = Path::new(relative_path).parent()?;
     let parent = parent.to_string_lossy();
     if parent.is_empty() {
-        Some(format!("/browse/{device}"))
+        Some(format!("/browse/{}", percent_encode_path_segment(device)))
     } else {
-        Some(format!("/browse/{device}/{parent}"))
+        Some(browse_url(device, &parent))
+    }
+}
+
+fn browse_url(device: &str, relative_path: &str) -> String {
+    entry_url("browse", device, relative_path)
+}
+
+fn download_url(device: &str, relative_path: &str) -> String {
+    entry_url("download", device, relative_path)
+}
+
+fn entry_url(route: &str, device: &str, relative_path: &str) -> String {
+    let encoded_device = percent_encode_path_segment(device);
+    let encoded_path = percent_encode_relative_path(relative_path);
+    if encoded_path.is_empty() {
+        format!("/{route}/{encoded_device}")
+    } else {
+        format!("/{route}/{encoded_device}/{encoded_path}")
+    }
+}
+
+fn percent_encode_relative_path(path: &str) -> String {
+    path.trim_matches('/')
+        .split('/')
+        .filter(|segment| !segment.is_empty())
+        .map(percent_encode_path_segment)
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
+fn percent_encode_path_segment(segment: &str) -> String {
+    segment
+        .bytes()
+        .flat_map(|byte| match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                vec![byte as char]
+            }
+            _ => format!("%{byte:02X}").chars().collect(),
+        })
+        .collect()
+}
+
+fn entry_kind(is_dir: bool, is_file: bool, is_symlink: bool) -> &'static str {
+    if is_symlink {
+        "Symlink"
+    } else if is_dir {
+        "Folder"
+    } else if is_file {
+        "File"
+    } else {
+        "Other"
     }
 }
 
