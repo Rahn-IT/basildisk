@@ -523,7 +523,7 @@ input[type="submit"].btn {
 
 .browse-row {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 7rem 10rem;
+    grid-template-columns: minmax(0, 1fr) 7rem 12rem;
     align-items: center;
     gap: 1rem;
     border: 1px solid var(--line);
@@ -568,8 +568,13 @@ input[type="submit"].btn {
 }
 
 .browse-action-btn {
-    width: 10rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 12rem;
+    min-height: 2.35rem;
     text-align: center;
+    white-space: nowrap;
 }
 
 .job-log {
