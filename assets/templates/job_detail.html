@@ -1,18 +1,10 @@
-{% extends 'layout.html' %}
-
-{% block title %}Job Log{% endblock %}
-
-{% block top_actions %}
+{% extends 'layout.html' %} {% block title %}Job Log{% endblock %} {% block
+top_actions %}
 <a class="btn" href="/jobs/{{ job.id }}/log.txt">Download TXT</a>
 {% if has_timestamp_files %}
-<span class="timestamp-downloads">
-    <a class="btn" href="/jobs/{{ job.id }}/timestamp-request.tsq">Download TSQ</a>
-    <a class="btn" href="/jobs/{{ job.id }}/timestamp-response.tsr">Download TSR</a>
-</span>
-{% endif %}
-{% endblock %}
-
-{% block content %}
+<a class="btn" href="/jobs/{{ job.id }}/timestamp-request.tsq">Download TSQ</a>
+<a class="btn" href="/jobs/{{ job.id }}/timestamp-response.tsr">Download TSR</a>
+{% endif %} {% endblock %} {% block content %}
 <dl class="metadata-grid">
     <div>
         <dt>Name</dt>
