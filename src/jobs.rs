@@ -264,13 +264,28 @@ impl JobManager {
             let mut log_receiver = logger.subscribe();
             let final_log_success_data = job.final_log_success_data();
 
-            let job_handle = tokio::spawn(async move { job.run(logger).await });
+            let mut job_handle = tokio::spawn({
+                let logger = logger.clone();
+                async move { job.run(logger).await }
+            });
 
-            while let Ok(content) = log_receiver.recv().await {
+            let result = loop {
+                tokio::select! {
+                    content = log_receiver.recv() => {
+                        match content {
+                            Ok(content) => log.lock().unwrap().push_str(&content),
+                            Err(broadcast::error::RecvError::Lagged(_)) => {}
+                            Err(broadcast::error::RecvError::Closed) => {}
+                        }
+                    }
+                    result = &mut job_handle => break result,
+                }
+            };
+
+            while let Ok(content) = log_receiver.try_recv() {
                 log.lock().unwrap().push_str(&content);
             }
 
-            let result = job_handle.await;
             match result {
                 Err(err) => log
                     .lock()
@@ -282,9 +297,13 @@ impl JobManager {
                     .push_str(&format!("Job failed: {err}\n")),
                 Ok(Ok(_)) => {
                     if let Some(final_log_success_data) = final_log_success_data {
-                        let mut log = log.lock().unwrap();
-                        if let Some(extra) = final_log_success_data(&log) {
-                            log.push_str(&extra);
+                        let extra = {
+                            let log = log.lock().unwrap();
+                            final_log_success_data(&log)
+                        };
+                        if let Some(extra) = extra {
+                            let _ = logger.send(extra.clone());
+                            log.lock().unwrap().push_str(&extra);
                         }
                     }
                 }
