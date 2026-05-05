@@ -463,7 +463,11 @@ input[type="submit"].btn {
 }
 
 .partition-action-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     width: 6.5rem;
+    text-align: center;
 }
 
 .section-title {
