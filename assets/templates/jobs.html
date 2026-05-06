@@ -2,6 +2,10 @@
 
 {% block title %}Jobs{% endblock %}
 
+{% block top_actions %}
+<a class="btn" href="/jobs/export.zip">Export ZIP</a>
+{% endblock %}
+
 {% block content %}
 <form class="log-search" method="get" action="/jobs">
     <label for="q">Search jobs and logs</label>

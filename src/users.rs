@@ -5,10 +5,13 @@ use argon2::{
     password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString, rand_core::OsRng},
 };
 use axum::{
+    Router,
     extract::{self, FromRequestParts, Path, State},
     http::request::{self},
+    middleware,
     middleware::Next,
     response::{Html, IntoResponse, Redirect, Response},
+    routing::{get, post},
 };
 use axum_extra::extract::{
     Form,
@@ -22,6 +25,19 @@ use crate::{AppState, error::AppError};
 
 pub const SESSION_COOKIE_NAME: &str = "session_id";
 const SESSION_DURATION_SECONDS: i64 = 60 * 60 * 24 * 30;
+
+pub fn router() -> Router<AppState> {
+    let admin_routes = Router::new()
+        .route("/users", get(index).post(create_post))
+        .route("/users/{id}/delete", get(delete_get).post(delete_post))
+        .route_layer(middleware::from_extractor::<RequireAdmin>());
+
+    Router::new()
+        .route("/setup", get(setup_get).post(setup_post))
+        .route("/login", get(login_get).post(login_post))
+        .route("/logout", post(logout_post))
+        .merge(admin_routes)
+}
 
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct CurrentUser {
