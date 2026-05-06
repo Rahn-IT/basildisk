@@ -27,6 +27,7 @@ pub mod error;
 mod jobs;
 mod lsblk;
 mod mount;
+mod shutdown;
 mod smartctl;
 mod timestamp;
 mod users;
@@ -44,7 +45,7 @@ const DB_PATH: &str = "./db/db.sqlite";
 pub(crate) struct AppState {
     db: SqlitePool,
     pub(crate) jinja: Arc<minijinja::Environment<'static>>,
-    job_manager: Arc<JobManager>,
+    pub(crate) job_manager: Arc<JobManager>,
 }
 
 #[derive(Serialize)]
@@ -191,6 +192,7 @@ fn router() -> Router<AppState> {
             )),
         )
         .merge(browse::router())
+        .merge(shutdown::router())
         .merge(admin_routes)
 }
 

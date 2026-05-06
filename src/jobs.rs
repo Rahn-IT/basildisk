@@ -74,6 +74,16 @@ impl JobManager {
         }
     }
 
+    pub async fn list_running_jobs(&self) -> Vec<JobInfo> {
+        self.running_jobs
+            .lock()
+            .unwrap()
+            .values()
+            .map(|job| &job.info)
+            .cloned()
+            .collect()
+    }
+
     pub async fn list_running_jobs_filtered(&self, search: Option<&str>) -> Vec<JobInfo> {
         let search = search.map(str::trim).filter(|value| !value.is_empty());
 

@@ -1,0 +1,34 @@
+{% extends 'layout.html' %}
+
+{% block title %}Shutdown Device{% endblock %}
+
+{% block top_actions %}
+<a class="btn" href="/">Back Home</a>
+{% endblock %}
+
+{% block content %}
+{% if has_running_jobs %}
+<div class="notice notice-warning">
+    <strong>{{ running_jobs | length }} job{% if running_jobs | length != 1 %}s{% endif %} still running.</strong>
+    <ul class="shutdown-job-list">
+        {% for job in running_jobs %}
+        <li>{{ job.name }} ({{ job.disk }})</li>
+        {% endfor %}
+    </ul>
+</div>
+{% endif %}
+
+<div class="details-card">
+    <p>Are you sure you want to shut down this device?</p>
+    <p class="muted">
+        This will power off the device immediately. Any active work will be interrupted.
+    </p>
+</div>
+{% endblock %}
+
+{% block bottom_actions %}
+<a class="btn" href="/">Cancel</a>
+<form method="post" action="/shutdown">
+    <button class="btn btn-danger" type="submit">Confirm Shutdown</button>
+</form>
+{% endblock %}

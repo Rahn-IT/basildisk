@@ -8,6 +8,9 @@
             {% endif %}
         </div>
         <div class="nav-right">
+            {% if is_admin %}
+            <a class="btn btn-danger" href="/shutdown">Shutdown</a>
+            {% endif %}
             <form method="post" action="/logout">
                 <input class="btn" type="submit" value="Logout" />
             </form>

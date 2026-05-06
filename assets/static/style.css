@@ -299,6 +299,11 @@ input[type="submit"].btn {
     color: #785400;
 }
 
+.shutdown-job-list {
+    margin: 0.55rem 0 0;
+    padding-left: 1.2rem;
+}
+
 .disk-list,
 .job-list {
     display: grid;
@@ -691,6 +696,16 @@ input[type="submit"].btn-primary:hover {
 
     .content-card {
         padding: 1rem;
+    }
+
+    .top-nav-inner {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .nav-left,
+    .nav-right {
+        flex-wrap: wrap;
     }
 
     .items-table,
