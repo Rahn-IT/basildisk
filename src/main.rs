@@ -11,6 +11,7 @@ mod erase_routes;
 pub mod error;
 mod export;
 mod job_download;
+mod job_import;
 mod job_routes;
 mod jobs;
 mod lsblk;
@@ -80,6 +81,7 @@ fn router() -> Router<AppState> {
         .merge(erase_routes::router())
         .merge(export::router())
         .merge(job_download::router())
+        .merge(job_import::router())
         .merge(job_routes::router())
         .merge(partition_routes::router())
         .merge(shutdown::router())
