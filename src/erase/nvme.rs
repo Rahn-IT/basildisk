@@ -54,9 +54,47 @@ impl Nvme {
 
 fn controller_for_device(device: &str) -> String {
     device
-        .split_once('n')
-        .map(|(controller, _)| controller.to_string())
-        .unwrap_or_else(|| device.to_string())
+        .rsplit_once('n')
+        .filter(|(_, namespace)| {
+            !namespace.is_empty()
+                && namespace
+                    .chars()
+                    .all(|character| character.is_ascii_digit())
+        })
+        .map(|(controller, _)| controller)
+        .filter(|controller| controller.starts_with("nvme") && !controller.is_empty())
+        .unwrap_or(device)
+        .to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn controller_for_namespace_device() {
+        assert_eq!(controller_for_device("nvme0n1"), "nvme0");
+        assert_eq!(controller_for_device("nvme10n2"), "nvme10");
+        assert_eq!(controller_for_device("nvme10n12"), "nvme10");
+    }
+
+    #[test]
+    fn controller_for_controller_device_is_unchanged() {
+        assert_eq!(controller_for_device("nvme0"), "nvme0");
+        assert_eq!(controller_for_device("nvme10"), "nvme10");
+    }
+
+    #[test]
+    fn non_nvme_device_is_unchanged() {
+        assert_eq!(controller_for_device("sda"), "sda");
+        assert_eq!(controller_for_device("mapper/data"), "mapper/data");
+    }
+
+    #[test]
+    fn malformed_namespace_suffix_is_unchanged() {
+        assert_eq!(controller_for_device("nvme0n"), "nvme0n");
+        assert_eq!(controller_for_device("nvme0nx"), "nvme0nx");
+    }
 }
 
 fn has_supported_line(output: &str, label: &str) -> bool {
