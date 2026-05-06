@@ -75,17 +75,18 @@ pub enum GetEraseTypeError {
     Nvme(#[from] NvmeError),
 }
 
-#[derive(Debug, Error)]
-enum EraseRunError {
-    #[error("{0}")]
-    Unsupported(String),
-}
-
 impl EraseType {
     pub fn can_run(self) -> bool {
         matches!(
             self,
-            Self::BlockOverride | Self::AtaSecureErase | Self::AtaEnhancedSecureErase
+            Self::BlockOverride
+                | Self::AtaSecureErase
+                | Self::AtaEnhancedSecureErase
+                | Self::NvmeSanitizeCryptoErase
+                | Self::NvmeSanitizeBlockErase
+                | Self::NvmeSanitizeOverwrite
+                | Self::NvmeFormatCryptoErase
+                | Self::NvmeFormatUserDataErase
         )
     }
 
@@ -211,15 +212,43 @@ Selected Erasure Method: {}
                         b
                     })
             }
-            EraseType::NvmeSanitizeCryptoErase
-            | EraseType::NvmeSanitizeBlockErase
-            | EraseType::NvmeSanitizeOverwrite
-            | EraseType::NvmeFormatCryptoErase
-            | EraseType::NvmeFormatUserDataErase => {
-                let err: Box<dyn std::error::Error + Send> = Box::new(EraseRunError::Unsupported(
-                    "NVMe erase execution is not implemented yet.".to_string(),
-                ));
-                Err(err)
+            EraseType::NvmeSanitizeCryptoErase => {
+                Nvme::sanitize_crypto_erase_disk(self.device, &logger)
+                    .await
+                    .map_err(|err| {
+                        let b: Box<dyn std::error::Error + Send> = Box::new(err);
+                        b
+                    })
+            }
+            EraseType::NvmeSanitizeBlockErase => {
+                Nvme::sanitize_block_erase_disk(self.device, &logger)
+                    .await
+                    .map_err(|err| {
+                        let b: Box<dyn std::error::Error + Send> = Box::new(err);
+                        b
+                    })
+            }
+            EraseType::NvmeSanitizeOverwrite => Nvme::sanitize_overwrite_disk(self.device, &logger)
+                .await
+                .map_err(|err| {
+                    let b: Box<dyn std::error::Error + Send> = Box::new(err);
+                    b
+                }),
+            EraseType::NvmeFormatCryptoErase => {
+                Nvme::format_crypto_erase_disk(self.device, &logger)
+                    .await
+                    .map_err(|err| {
+                        let b: Box<dyn std::error::Error + Send> = Box::new(err);
+                        b
+                    })
+            }
+            EraseType::NvmeFormatUserDataErase => {
+                Nvme::format_user_data_erase_disk(self.device, &logger)
+                    .await
+                    .map_err(|err| {
+                        let b: Box<dyn std::error::Error + Send> = Box::new(err);
+                        b
+                    })
             }
             EraseType::None => Ok(()),
         };
