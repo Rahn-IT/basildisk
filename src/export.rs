@@ -115,7 +115,7 @@ async fn add_job_to_zip(
         response: job.timestamp_response,
     };
     let log = build_txt_log(&job.log, &timestamp_files);
-    let entry = ZipEntryBuilder::new(format!("{}.txt", job.id).into(), Compression::Stored);
+    let entry = ZipEntryBuilder::new(format!("{}.txt", job.id).into(), Compression::Deflate);
     zip.write_entry_whole(entry, log.as_bytes()).await?;
     Ok(())
 }
