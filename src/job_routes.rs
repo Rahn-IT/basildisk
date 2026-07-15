@@ -137,6 +137,9 @@ async fn job_log(
                     }
                 }
             }
+
+            // Wait for WS to close - ensures it's not dropped before the log is received by the browser.
+            while socket.recv().await.is_some() {}
         })
         .into_response())
 }
