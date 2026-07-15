@@ -351,5 +351,5 @@ fn hash_signed_log_content(log: &str) -> Option<String> {
 
     let signed_content = &log.as_bytes()[first_separator..=last_separator];
     let digest = Sha256::digest(signed_content);
-    Some(format!("{digest:x}"))
+    Some(digest.iter().map(|byte| format!("{byte:02x}")).collect())
 }
