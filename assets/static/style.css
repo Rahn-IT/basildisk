@@ -299,6 +299,24 @@ input[type="submit"].btn {
     color: #785400;
 }
 
+.sleep-status {
+    border: 1px solid var(--brand);
+    border-radius: 8px;
+    padding: 0.85rem 0.95rem;
+    margin: 1rem 0;
+    background: color-mix(in srgb, var(--button-active-bg) 46%, var(--card) 54%);
+}
+
+.sleep-status p {
+    margin: 0.35rem 0 0;
+    color: var(--muted);
+}
+
+.sleep-status .btn {
+    display: inline-block;
+    margin-top: 0.75rem;
+}
+
 .shutdown-job-list {
     margin: 0.55rem 0 0;
     padding-left: 1.2rem;

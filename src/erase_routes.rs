@@ -9,12 +9,14 @@ use axum::{
 };
 use axum_extra::extract::Form;
 use serde::{Deserialize, Serialize};
+use tokio::process::Command;
 
 use crate::{
     AppState,
     disk_info::Disk,
     erase::{EraseJob, EraseType, hdparm::Hdparm},
     error::AppError,
+    jobs::JobInfo,
     users::{self, CurrentUser},
 };
 
@@ -27,6 +29,14 @@ struct EraseRequestView {
     error_message: Option<String>,
 }
 
+#[derive(Serialize)]
+struct EraseUnfreezeView {
+    is_admin: bool,
+    disk: Disk,
+    running_jobs: Vec<JobInfo>,
+    has_running_jobs: bool,
+}
+
 #[derive(Debug, Deserialize)]
 struct ConfirmErase {
     serial: String,
@@ -36,6 +46,10 @@ struct ConfirmErase {
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/erase/{device}", get(erase_get).post(erase_post))
+        .route(
+            "/erase/{device}/unfreeze",
+            get(unfreeze_get).post(unfreeze_post),
+        )
         .route_layer(middleware::from_extractor::<users::RequireAdmin>())
 }
 
@@ -128,6 +142,12 @@ async fn erase_post(
         )));
     }
 
+    if disk_requires_unfreeze(&device, disk.erase_type).await? {
+        return Err(AppError::conflict(
+            "This disk is frozen. Use Temporary Sleep Mode and try again after the machine wakes.",
+        ));
+    }
+
     let job = EraseJob {
         device,
         connection_type: disk.connection_type,
@@ -146,12 +166,76 @@ async fn erase_post(
     Ok(Redirect::to(&format!("/jobs/{id}")))
 }
 
+async fn unfreeze_get(
+    State(state): State<AppState>,
+    current_user: CurrentUser,
+    AxumPath(device): AxumPath<String>,
+) -> Result<Html<String>, AppError> {
+    let disk = find_disk(&device).await?;
+
+    if !disk_requires_unfreeze(&device, disk.erase_type).await? {
+        return Err(AppError::conflict(
+            "This disk is not currently frozen. Return to the erase page to continue.",
+        ));
+    }
+
+    let running_jobs = state.job_manager.list_running_jobs().await;
+    let template = state
+        .jinja
+        .get_template("erase_unfreeze.html")
+        .expect("template is loaded");
+    let rendered = template.render(EraseUnfreezeView {
+        is_admin: current_user.is_admin,
+        disk,
+        has_running_jobs: !running_jobs.is_empty(),
+        running_jobs,
+    })?;
+    Ok(Html(rendered))
+}
+
+async fn unfreeze_post(AxumPath(device): AxumPath<String>) -> Result<Redirect, AppError> {
+    let disk = find_disk(&device).await?;
+
+    if !disk_requires_unfreeze(&device, disk.erase_type).await? {
+        return Ok(Redirect::to(&format!("/erase/{device}")));
+    }
+
+    let output = Command::new("rtcwake")
+        .arg("-m")
+        .arg("mem")
+        .arg("-s")
+        .arg("10")
+        .output()
+        .await?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let message = [stderr.trim(), stdout.trim()]
+            .into_iter()
+            .find(|value| !value.is_empty())
+            .unwrap_or("rtcwake command failed");
+        return Err(AppError::internal(anyhow::anyhow!(message.to_string())));
+    }
+
+    Ok(Redirect::to(&format!("/erase/{device}")))
+}
+
 async fn find_disk(device: &str) -> Result<Disk, AppError> {
     Disk::list()
         .await?
         .into_iter()
         .find(|disk| disk.device == device)
         .ok_or_else(|| AppError::not_found_for("Disk", format!("No disk exists for {device}")))
+}
+
+async fn disk_requires_unfreeze(device: &str, erase_type: EraseType) -> Result<bool, AppError> {
+    match erase_type {
+        EraseType::AtaSecureErase | EraseType::AtaEnhancedSecureErase => {
+            Ok(Hdparm::get_for_disk(device).await?.frozen)
+        }
+        _ => Ok(false),
+    }
 }
 
 fn unix_timestamp() -> u64 {

@@ -54,4 +54,99 @@ window.onload = function () {
       this.closest("tr").remove();
     });
   });
+
+  document.querySelectorAll("form[data-unfreeze-form]").forEach((form) => {
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+
+      const submit = form.querySelector("[data-unfreeze-submit]");
+      const status = document.querySelector("[data-unfreeze-status]");
+      const statusTitle = document.querySelector("[data-unfreeze-status-title]");
+      const statusMessage = document.querySelector("[data-unfreeze-status-message]");
+      const reload = document.querySelector("[data-unfreeze-reload]");
+      const returnUrl = form.dataset.returnUrl || "/";
+
+      if (submit) {
+        submit.disabled = true;
+        submit.classList.add("btn-disabled");
+        submit.textContent = "Suspending...";
+      }
+
+      if (status) {
+        status.hidden = false;
+      }
+
+      let timeoutId = window.setTimeout(() => {
+        if (statusTitle) {
+          statusTitle.textContent = "Still waiting for the machine...";
+        }
+        if (statusMessage) {
+          statusMessage.textContent =
+            "The machine may still be waking. Reload the erase page when Basildisk is reachable again.";
+        }
+        if (reload) {
+          reload.hidden = false;
+        }
+      }, 90000);
+
+      try {
+        const response = await fetch(form.action, {
+          method: "POST",
+          credentials: "same-origin",
+          cache: "no-store",
+        });
+
+        if (!response.ok) {
+          if (statusTitle) {
+            statusTitle.textContent = "Temporary Sleep Mode failed";
+          }
+          if (statusMessage) {
+            statusMessage.textContent =
+              "Basildisk could not suspend the machine. Check the system configuration and try again.";
+          }
+          if (reload) {
+            reload.hidden = false;
+          }
+          if (submit) {
+            submit.disabled = false;
+            submit.classList.remove("btn-disabled");
+            submit.textContent = "Temporary Sleep Mode";
+          }
+          return;
+        }
+      } catch (_error) {
+        await waitForServer(returnUrl);
+      } finally {
+        window.clearTimeout(timeoutId);
+      }
+
+      window.location.href = returnUrl;
+    });
+  });
 };
+
+async function waitForServer(url) {
+  const deadline = Date.now() + 90000;
+
+  while (Date.now() < deadline) {
+    await delay(2000);
+
+    try {
+      const response = await fetch(url, {
+        method: "GET",
+        credentials: "same-origin",
+        cache: "no-store",
+      });
+
+      if (response.ok) {
+        return;
+      }
+    } catch (_error) {
+      // The machine or web server is still waking up.
+    }
+  }
+}
+
+function delay(ms) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
