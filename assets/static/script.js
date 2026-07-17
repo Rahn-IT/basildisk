@@ -63,13 +63,17 @@ window.onload = function () {
       const status = document.querySelector("[data-unfreeze-status]");
       const statusTitle = document.querySelector("[data-unfreeze-status-title]");
       const statusMessage = document.querySelector("[data-unfreeze-status-message]");
-      const reload = document.querySelector("[data-unfreeze-reload]");
       const returnUrl = form.dataset.returnUrl || "/";
+      const actions = form.closest(".bottom-toolbar");
 
       if (submit) {
         submit.disabled = true;
         submit.classList.add("btn-disabled");
-        submit.textContent = "Suspending...";
+        submit.textContent = "Unfreezing...";
+      }
+
+      if (actions) {
+        actions.hidden = true;
       }
 
       if (status) {
@@ -82,10 +86,7 @@ window.onload = function () {
         }
         if (statusMessage) {
           statusMessage.textContent =
-            "The machine may still be waking. Reload the erase page when Basildisk is reachable again.";
-        }
-        if (reload) {
-          reload.hidden = false;
+            "The machine may still be waking. Keep this page open; Basildisk will continue checking.";
         }
       }, 90000);
 
@@ -104,13 +105,13 @@ window.onload = function () {
             statusMessage.textContent =
               "Basildisk could not suspend the machine. Check the system configuration and try again.";
           }
-          if (reload) {
-            reload.hidden = false;
-          }
           if (submit) {
             submit.disabled = false;
             submit.classList.remove("btn-disabled");
-            submit.textContent = "Temporary Sleep Mode";
+            submit.textContent = "Unfreeze";
+          }
+          if (actions) {
+            actions.hidden = false;
           }
           return;
         }
@@ -126,9 +127,7 @@ window.onload = function () {
 };
 
 async function waitForServer(url) {
-  const deadline = Date.now() + 90000;
-
-  while (Date.now() < deadline) {
+  while (true) {
     await delay(2000);
 
     try {

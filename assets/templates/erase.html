@@ -7,12 +7,6 @@
 <div class="notice notice-error">{{ error_message }}</div>
 {% endif %}
 
-{% if requires_unfreeze %}
-<div class="notice notice-warning">
-    This disk is frozen. Use Temporary Sleep Mode to suspend and wake this machine before starting the erase.
-</div>
-{% endif %}
-
 <dl class="metadata-grid">
     <div>
         <dt>Model</dt>
@@ -32,12 +26,7 @@
     </div>
 </dl>
 
-{% if requires_unfreeze %}
-<div class="form-actions">
-    <a class="btn btn-primary" href="/erase/{{ disk.device }}/unfreeze">Temporary Sleep Mode</a>
-    <a class="btn" href="/">Cancel</a>
-</div>
-{% elif disk.erase_type != "None" %}
+{% if disk.erase_type != "None" %}
 <form class="form-stack" method="post" action="/erase/{{ disk.device }}">
     <input type="hidden" name="timestamp" value="{{ timestamp }}" />
     <label for="serial">Type the serial number to confirm</label>

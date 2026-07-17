@@ -4,7 +4,7 @@ use axum::{
     Router,
     extract::{Path as AxumPath, State},
     middleware,
-    response::{Html, Redirect},
+    response::{Html, IntoResponse, Redirect, Response},
     routing::get,
 };
 use axum_extra::extract::Form;
@@ -25,7 +25,6 @@ struct EraseRequestView {
     is_admin: bool,
     disk: Disk,
     timestamp: u64,
-    requires_unfreeze: bool,
     error_message: Option<String>,
 }
 
@@ -57,37 +56,28 @@ async fn erase_get(
     State(state): State<AppState>,
     current_user: CurrentUser,
     AxumPath(device): AxumPath<String>,
-) -> Result<Html<String>, AppError> {
+) -> Result<Response, AppError> {
     let disk = find_disk(&device).await?;
-    let (requires_unfreeze, error_message) = match disk.erase_type {
-        _ if disk.is_mounted => (
-            false,
-            Some(format!(
-                "Secure erase is disabled because this disk is mounted at {}.",
-                disk.mount_points_display
-            )),
-        ),
+    let error_message = match disk.erase_type {
+        _ if disk.is_mounted => Some(format!(
+            "Secure erase is disabled because this disk is mounted at {}.",
+            disk.mount_points_display
+        )),
         EraseType::AtaSecureErase | EraseType::AtaEnhancedSecureErase => {
             match Hdparm::get_for_disk(&device).await {
-                Ok(hdparm) => (hdparm.frozen, None),
-                Err(err) => (
-                    false,
-                    Some(format!("Error checking drive security state: {err}")),
-                ),
+                Ok(hdparm) if hdparm.frozen => {
+                    return Ok(Redirect::to(&format!("/erase/{device}/unfreeze")).into_response());
+                }
+                Ok(_) => None,
+                Err(err) => Some(format!("Error checking drive security state: {err}")),
             }
         }
-        EraseType::BlockOverride => (false, None),
-        EraseType::None => (
-            false,
-            Some("Secure erase is not supported for this disk.".to_string()),
-        ),
-        _ => (
-            false,
-            Some(format!(
-                "{} is detected but not implemented yet.",
-                disk.erase_type
-            )),
-        ),
+        EraseType::BlockOverride => None,
+        EraseType::None => Some("Secure erase is not supported for this disk.".to_string()),
+        _ => Some(format!(
+            "{} is detected but not implemented yet.",
+            disk.erase_type
+        )),
     };
 
     let template = state
@@ -98,10 +88,9 @@ async fn erase_get(
         is_admin: current_user.is_admin,
         disk,
         timestamp: unix_timestamp(),
-        requires_unfreeze,
         error_message,
     })?;
-    Ok(Html(rendered))
+    Ok(Html(rendered).into_response())
 }
 
 async fn erase_post(
@@ -143,9 +132,7 @@ async fn erase_post(
     }
 
     if disk_requires_unfreeze(&device, disk.erase_type).await? {
-        return Err(AppError::conflict(
-            "This disk is frozen. Use Temporary Sleep Mode and try again after the machine wakes.",
-        ));
+        return Ok(Redirect::to(&format!("/erase/{device}/unfreeze")));
     }
 
     let job = EraseJob {

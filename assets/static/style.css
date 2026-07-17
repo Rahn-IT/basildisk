@@ -316,16 +316,35 @@ input[type="submit"].btn {
         var(--button-active-bg) 46%,
         var(--card) 54%
     );
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 0.35rem 0.75rem;
+    align-items: center;
+}
+
+.sleep-status[hidden] {
+    display: none;
 }
 
 .sleep-status p {
-    margin: 0.35rem 0 0;
+    grid-column: 2;
+    margin: 0;
     color: var(--muted);
 }
 
-.sleep-status .btn {
-    display: inline-block;
-    margin-top: 0.75rem;
+.loading-spinner {
+    width: 1.15rem;
+    height: 1.15rem;
+    border: 2px solid color-mix(in srgb, var(--brand) 24%, transparent);
+    border-top-color: var(--brand);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
 }
 
 .shutdown-job-list {

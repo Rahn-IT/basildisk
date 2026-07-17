@@ -2,10 +2,6 @@
 
 {% block title %}Temporary Sleep Mode{% endblock %}
 
-{% block top_actions %}
-<a class="btn" href="/erase/{{ disk.device }}">Back to Erase</a>
-{% endblock %}
-
 {% block content %}
 {% if has_running_jobs %}
 <div class="notice notice-warning">
@@ -26,11 +22,14 @@
 
 <div class="details-card">
     <p>
-        This disk is frozen. Basildisk can ask the machine to sleep for a few seconds and wake
-        itself again, then it will recheck the disk state.
+        This disk is frozen, so ATA secure erase cannot start yet. Basildisk can suspend this
+        computer for a few seconds and let it wake itself again; that usually clears the frozen
+        security state.
     </p>
-    <p class="muted">
-        After the machine wakes, this page will return to the secure erase screen automatically.
+    <p>
+        Suspending may interrupt active work, including running erase jobs, open file transfers, or
+        other processes on this machine. After the machine wakes, Basildisk will wait until the web
+        service is reachable again and then return to the secure erase page automatically.
     </p>
 </div>
 
@@ -54,22 +53,21 @@
 </dl>
 
 <div class="sleep-status" data-unfreeze-status hidden>
+    <div class="loading-spinner" aria-hidden="true"></div>
     <strong data-unfreeze-status-title>Suspending machine...</strong>
     <p data-unfreeze-status-message>
         Wait for the machine to wake. Basildisk will recheck this disk when the server is reachable again.
     </p>
-    <a class="btn" href="/erase/{{ disk.device }}" data-unfreeze-reload hidden>Reload Erase Page</a>
 </div>
 {% endblock %}
 
 {% block bottom_actions %}
-<a class="btn" href="/erase/{{ disk.device }}">Cancel</a>
 <form
     method="post"
     action="/erase/{{ disk.device }}/unfreeze"
     data-unfreeze-form
     data-return-url="/erase/{{ disk.device }}"
 >
-    <button class="btn btn-primary" type="submit" data-unfreeze-submit>Temporary Sleep Mode</button>
+    <button class="btn btn-primary" type="submit" data-unfreeze-submit>Unfreeze</button>
 </form>
 {% endblock %}
