@@ -1,13 +1,9 @@
-use std::{process::Stdio, string::FromUtf8Error, time::Duration};
+use std::{string::FromUtf8Error, time::Duration};
 
 use thiserror::Error;
-use tokio::{
-    io::{AsyncBufReadExt, BufReader},
-    process::Command,
-    sync::broadcast,
-    task::JoinSet,
-    time::Instant,
-};
+use tokio::{process::Command, sync::broadcast, time::Instant};
+
+use super::command_runner::{self, CommandRunnerError};
 
 pub struct Nvme {
     pub format_nvm: bool,
@@ -27,6 +23,8 @@ pub enum NvmeError {
     ExitCode(i32),
     #[error("nvme command terminated without an exit code: {0}")]
     Terminated(std::process::ExitStatus),
+    #[error("error running nvme: {0}")]
+    CommandRunner(#[from] CommandRunnerError),
     #[error("nvme sanitize failed: {0}")]
     SanitizeFailed(String),
     #[error("nvme sanitize did not complete within {0:?}")]
@@ -168,93 +166,19 @@ async fn poll_sanitize_log(
     }
 }
 
-struct LoggedOutput {
-    stdout: String,
-    stderr: String,
-}
-
 async fn run_and_log(
     command: &mut Command,
     logger: &broadcast::Sender<String>,
-) -> Result<LoggedOutput, NvmeError> {
-    command.stdout(Stdio::piped()).stderr(Stdio::piped());
-
-    let std_cmd = command.as_std();
-    let run_log = format!(
-        "> {} {}\n",
-        std_cmd.get_program().to_string_lossy(),
-        std_cmd
-            .get_args()
-            .map(|arg| arg.to_string_lossy())
-            .collect::<Vec<_>>()
-            .join(" "),
-    );
-    let _ = logger.send(run_log);
-
-    let mut child = command.spawn()?;
-    let mut joinset = JoinSet::new();
-
-    let stdout = child.stdout.take().unwrap();
-    joinset.spawn(read_and_log(stdout, logger.clone(), StreamKind::Stdout));
-
-    let stderr = child.stderr.take().unwrap();
-    joinset.spawn(read_and_log(stderr, logger.clone(), StreamKind::Stderr));
-
-    let mut stdout = String::new();
-    let mut stderr = String::new();
-    while let Some(result) = joinset.join_next().await {
-        match result {
-            Ok(StreamOutput {
-                kind: StreamKind::Stdout,
-                output,
-            }) => stdout.push_str(&output),
-            Ok(StreamOutput {
-                kind: StreamKind::Stderr,
-                output,
-            }) => stderr.push_str(&output),
-            Err(err) => stderr.push_str(&format!("log reader task failed: {err}\n")),
-        }
-    }
-
-    let status = child.wait().await?;
+) -> Result<command_runner::LoggedCommandOutput, NvmeError> {
+    let output = command_runner::run_and_log(command, logger).await?;
+    let status = output.status;
     match status.code() {
         Some(0) => {}
         Some(code) => return Err(NvmeError::ExitCode(code)),
         None => return Err(NvmeError::Terminated(status)),
     }
 
-    Ok(LoggedOutput { stdout, stderr })
-}
-
-#[derive(Clone, Copy)]
-enum StreamKind {
-    Stdout,
-    Stderr,
-}
-
-struct StreamOutput {
-    kind: StreamKind,
-    output: String,
-}
-
-async fn read_and_log<R>(
-    reader: R,
-    logger: broadcast::Sender<String>,
-    kind: StreamKind,
-) -> StreamOutput
-where
-    R: tokio::io::AsyncRead + Unpin,
-{
-    let mut reader = BufReader::new(reader).lines();
-    let mut output = String::new();
-
-    while let Ok(Some(mut line)) = reader.next_line().await {
-        line.push('\n');
-        output.push_str(&line);
-        let _ = logger.send(line);
-    }
-
-    StreamOutput { kind, output }
+    Ok(output)
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -327,6 +251,16 @@ fn controller_for_device(device: &str) -> String {
         .to_string()
 }
 
+fn has_supported_line(output: &str, label: &str) -> bool {
+    output
+        .lines()
+        .filter(|line| line.contains(label))
+        .any(|line| {
+            let line = line.trim();
+            (line.contains(": 0x1") || line.contains(": 1")) && !line.contains("Not Supported")
+        })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -391,14 +325,4 @@ mod tests {
             SanitizeStatus::Failed("SSTAT reports failure: 0x3".to_string())
         );
     }
-}
-
-fn has_supported_line(output: &str, label: &str) -> bool {
-    output
-        .lines()
-        .filter(|line| line.contains(label))
-        .any(|line| {
-            let line = line.trim();
-            (line.contains(": 0x1") || line.contains(": 1")) && !line.contains("Not Supported")
-        })
 }

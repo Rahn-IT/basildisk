@@ -313,10 +313,9 @@ impl Disk {
         };
 
         let total = used.saturating_add(available);
-        if total == 0 {
-            0
-        } else {
-            ((used.saturating_mul(100)) / total).min(100) as u8
-        }
+        used.saturating_mul(100)
+            .checked_div(total)
+            .unwrap_or(0)
+            .min(100) as u8
     }
 }

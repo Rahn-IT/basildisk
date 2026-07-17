@@ -33,6 +33,12 @@ struct ParsedImportedJob {
     timestamp_response: Option<Vec<u8>>,
 }
 
+struct TimestampPayload {
+    log: String,
+    request: Option<Vec<u8>>,
+    response: Option<Vec<u8>>,
+}
+
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/jobs/import", get(import_get).post(import_post))
@@ -190,11 +196,14 @@ async fn insert_imported_job(state: &AppState, job: ParsedImportedJob) -> Result
 }
 
 fn parse_imported_job(id: &str, txt: &str) -> Option<ParsedImportedJob> {
-    let (log, timestamp_request, timestamp_response) = split_timestamp_payload(txt)?;
-    let disk = extract_field(&log, "Device Name:").unwrap_or_else(|| "imported".to_string());
-    let model = extract_field(&log, "Model:").unwrap_or_else(|| "Imported Disk".to_string());
-    let serial = extract_field(&log, "Serial:").unwrap_or_else(|| "Unknown Serial".to_string());
-    let method = extract_field(&log, "Selected Erasure Method:")
+    let payload = split_timestamp_payload(txt);
+    let disk =
+        extract_field(&payload.log, "Device Name:").unwrap_or_else(|| "imported".to_string());
+    let model =
+        extract_field(&payload.log, "Model:").unwrap_or_else(|| "Imported Disk".to_string());
+    let serial =
+        extract_field(&payload.log, "Serial:").unwrap_or_else(|| "Unknown Serial".to_string());
+    let method = extract_field(&payload.log, "Selected Erasure Method:")
         .unwrap_or_else(|| "Imported Job".to_string());
     let name = format!("{method} for {model}: {serial}");
 
@@ -202,16 +211,20 @@ fn parse_imported_job(id: &str, txt: &str) -> Option<ParsedImportedJob> {
         id: id.to_string(),
         disk,
         name,
-        log,
-        timestamp_request,
-        timestamp_response,
+        log: payload.log,
+        timestamp_request: payload.request,
+        timestamp_response: payload.response,
     })
 }
 
-fn split_timestamp_payload(txt: &str) -> Option<(String, Option<Vec<u8>>, Option<Vec<u8>>)> {
+fn split_timestamp_payload(txt: &str) -> TimestampPayload {
     let marker = format!("\n{TIMESTAMP_REQUEST_PREFIX}");
     let Some(payload_start) = txt.find(&marker) else {
-        return Some((txt.to_string(), None, None));
+        return TimestampPayload {
+            log: txt.to_string(),
+            request: None,
+            response: None,
+        };
     };
 
     let log = txt[..payload_start].to_string();
@@ -221,7 +234,11 @@ fn split_timestamp_payload(txt: &str) -> Option<(String, Option<Vec<u8>>, Option
     let response = extract_prefixed_line(payload, TIMESTAMP_RESPONSE_PREFIX)
         .and_then(|value| STANDARD.decode(value).ok());
 
-    Some((log, request, response))
+    TimestampPayload {
+        log,
+        request,
+        response,
+    }
 }
 
 fn extract_field(log: &str, prefix: &str) -> Option<String> {
