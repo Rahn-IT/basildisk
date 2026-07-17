@@ -76,8 +76,14 @@ body {
     min-height: 100vh;
     font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
     color: var(--text);
-    background: radial-gradient(circle at 5% 0%, var(--bg-accent-a) 0, transparent 35%),
-        radial-gradient(circle at 95% 100%, var(--bg-accent-b) 0, transparent 30%), var(--bg);
+    background:
+        radial-gradient(circle at 5% 0%, var(--bg-accent-a) 0, transparent 35%),
+        radial-gradient(
+            circle at 95% 100%,
+            var(--bg-accent-b) 0,
+            transparent 30%
+        ),
+        var(--bg);
 }
 
 a {
@@ -183,7 +189,8 @@ a:hover {
     background: var(--card-2);
     border: 1px solid var(--line);
     border-radius: 8px;
-    padding: 1rem;
+    padding: 2rem;
+    margin-bottom: 1rem;
 }
 
 .items-table {
@@ -304,7 +311,11 @@ input[type="submit"].btn {
     border-radius: 8px;
     padding: 0.85rem 0.95rem;
     margin: 1rem 0;
-    background: color-mix(in srgb, var(--button-active-bg) 46%, var(--card) 54%);
+    background: color-mix(
+        in srgb,
+        var(--button-active-bg) 46%,
+        var(--card) 54%
+    );
 }
 
 .sleep-status p {
@@ -414,7 +425,11 @@ input[type="submit"].btn {
 
 .partition-card.is-mounted {
     border-color: var(--button-line);
-    background: color-mix(in srgb, var(--button-active-bg) 38%, var(--card-2) 62%);
+    background: color-mix(
+        in srgb,
+        var(--button-active-bg) 38%,
+        var(--card-2) 62%
+    );
 }
 
 .partition-card h3 {
@@ -609,7 +624,10 @@ input[type="submit"].btn {
     padding: 1rem;
     background: #07111f;
     color: #d6f5e1;
-    font: 0.92rem/1.45 Consolas, "Liberation Mono", monospace;
+    font:
+        0.92rem/1.45 Consolas,
+        "Liberation Mono",
+        monospace;
     white-space: pre-wrap;
 }
 
