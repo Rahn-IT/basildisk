@@ -16,6 +16,8 @@ pub enum ShredError {
     UTF8(#[from] FromUtf8Error),
     #[error("shred exited with code {0}")]
     ExitCode(i32),
+    #[error("shred terminated without an exit code: {0}")]
+    Terminated(std::process::ExitStatus),
 }
 
 impl Shred {
@@ -69,14 +71,11 @@ impl Shred {
 
         joinset.join_all().await;
 
-        if let Some(code) = child.wait().await?.code() {
-            if code == 0 {
-                Ok(())
-            } else {
-                Err(ShredError::ExitCode(code))
-            }
-        } else {
-            Ok(())
+        let status = child.wait().await?;
+        match status.code() {
+            Some(0) => Ok(()),
+            Some(code) => Err(ShredError::ExitCode(code)),
+            None => Err(ShredError::Terminated(status)),
         }
     }
 }

@@ -25,6 +25,8 @@ pub enum NvmeError {
     UTF8(#[from] FromUtf8Error),
     #[error("nvme command exited with code {0}")]
     ExitCode(i32),
+    #[error("nvme command terminated without an exit code: {0}")]
+    Terminated(std::process::ExitStatus),
     #[error("nvme sanitize failed: {0}")]
     SanitizeFailed(String),
     #[error("nvme sanitize did not complete within {0:?}")]
@@ -214,10 +216,11 @@ async fn run_and_log(
         }
     }
 
-    if let Some(code) = child.wait().await?.code() {
-        if code != 0 {
-            return Err(NvmeError::ExitCode(code));
-        }
+    let status = child.wait().await?;
+    match status.code() {
+        Some(0) => {}
+        Some(code) => return Err(NvmeError::ExitCode(code)),
+        None => return Err(NvmeError::Terminated(status)),
     }
 
     Ok(LoggedOutput { stdout, stderr })

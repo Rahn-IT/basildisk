@@ -29,6 +29,8 @@ pub enum AtaSecureEraseError {
     UTF8(#[from] FromUtf8Error),
     #[error("hdparm exited with code {0}")]
     ExitCode(i32),
+    #[error("hdparm terminated without an exit code: {0}")]
+    Terminated(std::process::ExitStatus),
 }
 
 impl Hdparm {
@@ -170,14 +172,11 @@ impl Hdparm {
 
         joinset.join_all().await;
 
-        if let Some(code) = child.wait().await?.code() {
-            if code == 0 {
-                Ok(())
-            } else {
-                Err(AtaSecureEraseError::ExitCode(code))
-            }
-        } else {
-            Ok(())
+        let status = child.wait().await?;
+        match status.code() {
+            Some(0) => Ok(()),
+            Some(code) => Err(AtaSecureEraseError::ExitCode(code)),
+            None => Err(AtaSecureEraseError::Terminated(status)),
         }
     }
 }
