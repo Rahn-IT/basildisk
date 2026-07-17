@@ -1,6 +1,5 @@
-use tokio::sync::broadcast;
-
 use super::command_runner::{self, CommandRunnerError};
+use crate::jobs::JobLogger;
 
 pub struct Shred;
 
@@ -17,10 +16,7 @@ pub enum ShredError {
 }
 
 impl Shred {
-    pub async fn override_disk(
-        device: String,
-        logger: &broadcast::Sender<String>,
-    ) -> Result<(), ShredError> {
+    pub async fn override_disk(device: String, logger: &JobLogger) -> Result<(), ShredError> {
         let mut command = tokio::process::Command::new("shred");
         command.arg("-v").arg(format!("/dev/{device}"));
 

@@ -9,11 +9,11 @@ use serde::Serialize;
 use sha2::{Digest, Sha256};
 use shred::Shred;
 use thiserror::Error;
-use tokio::{process::Command, sync::broadcast};
+use tokio::process::Command;
 
 use crate::{
     disk_info::{ConnectionType, DiskType},
-    jobs::{self, FinalLogSuccessData, FinalLogSuccessDataFn, Job},
+    jobs::{self, FinalLogSuccessData, FinalLogSuccessDataFn, Job, JobLogger},
     timestamp,
 };
 
@@ -159,10 +159,7 @@ impl Job for EraseJob {
         Some(final_log_success_data)
     }
 
-    async fn run(
-        self,
-        logger: broadcast::Sender<String>,
-    ) -> Result<(), Box<dyn std::error::Error + Send>> {
+    async fn run(self, logger: JobLogger) -> Result<(), Box<dyn std::error::Error + Send>> {
         let device = self.device.clone();
         let started_at = jobs::format_unix_timestamp(jobs::unix_now());
         let intro = format!(
@@ -188,7 +185,7 @@ Selected Erasure Method: {}
             self.erase_type
         );
 
-        logger.send(intro).unwrap();
+        logger.write(intro);
 
         let result = match self.erase_type {
             EraseType::AtaEnhancedSecureErase => {
@@ -277,7 +274,7 @@ Basildisk was created by Rahn-IT (https://it-rahn.de)
             )
         };
 
-        logger.send(outro).unwrap();
+        logger.write(outro);
 
         if result.is_ok() {
             refresh_partition_table(&device).await;

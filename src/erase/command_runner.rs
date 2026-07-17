@@ -4,9 +4,10 @@ use thiserror::Error;
 use tokio::{
     io::{AsyncBufReadExt, AsyncRead, BufReader},
     process::Command,
-    sync::broadcast,
     task::JoinSet,
 };
+
+use crate::jobs::JobLogger;
 
 #[derive(Debug, Error)]
 pub enum CommandRunnerError {
@@ -26,7 +27,7 @@ pub struct LoggedCommandOutput {
 
 pub async fn run_and_log(
     command: &mut Command,
-    logger: &broadcast::Sender<String>,
+    logger: &JobLogger,
 ) -> Result<LoggedCommandOutput, CommandRunnerError> {
     command.stdout(Stdio::piped()).stderr(Stdio::piped());
     log_command(command, logger);
@@ -62,7 +63,7 @@ pub async fn run_and_log(
     })
 }
 
-fn log_command(command: &Command, logger: &broadcast::Sender<String>) {
+fn log_command(command: &Command, logger: &JobLogger) {
     let std_cmd = command.as_std();
     let run_log = format!(
         "> {} {}\n",
@@ -73,7 +74,7 @@ fn log_command(command: &Command, logger: &broadcast::Sender<String>) {
             .collect::<Vec<_>>()
             .join(" "),
     );
-    let _ = logger.send(run_log);
+    logger.write(run_log);
 }
 
 #[derive(Clone, Copy)]
@@ -84,7 +85,7 @@ enum OutputStream {
 
 async fn read_and_log<R>(
     reader: R,
-    logger: broadcast::Sender<String>,
+    logger: JobLogger,
     stream: OutputStream,
 ) -> Result<(OutputStream, String), std::io::Error>
 where
@@ -97,7 +98,7 @@ where
     while reader.read_until(b'\n', &mut bytes).await? != 0 {
         let chunk = String::from_utf8_lossy(&bytes).into_owned();
         output.push_str(&chunk);
-        let _ = logger.send(chunk);
+        logger.write(chunk);
         bytes.clear();
     }
 
@@ -110,7 +111,8 @@ mod tests {
 
     #[tokio::test]
     async fn logs_and_collects_both_output_streams() {
-        let (logger, mut receiver) = broadcast::channel(8);
+        let logger = JobLogger::new(String::new());
+        let mut receiver = logger.subscribe();
         let mut command = Command::new("sh");
         command.args(["-c", "printf stdout; printf stderr >&2"]);
 

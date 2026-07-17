@@ -131,9 +131,15 @@ async fn job_log(
             }
 
             if let Some(mut subscriber) = subscriber {
-                while let Ok(content) = subscriber.recv().await {
-                    if socket.send(Message::Text(content.into())).await.is_err() {
-                        break;
+                loop {
+                    match subscriber.recv().await {
+                        Ok(content) => {
+                            if socket.send(Message::Text(content.into())).await.is_err() {
+                                break;
+                            }
+                        }
+                        Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
+                        Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
                     }
                 }
             }

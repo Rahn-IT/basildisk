@@ -24,6 +24,7 @@ __________               __ __       _____        __
         \/     \/     \/             \/        \/     \/
 ";
 pub const JOB_PAGE_SIZE: i64 = 20;
+const LIVE_LOG_UPDATE_BUFFER_SIZE: usize = 128;
 pub(crate) type FinalLogSuccessDataFn =
     fn(String) -> Pin<Box<dyn Future<Output = Option<FinalLogSuccessData>> + Send>>;
 
@@ -31,6 +32,36 @@ pub(crate) struct FinalLogSuccessData {
     pub log: String,
     pub timestamp_request: Option<Vec<u8>>,
     pub timestamp_response: Option<Vec<u8>>,
+}
+
+#[derive(Clone)]
+pub(crate) struct JobLogger {
+    log: Arc<std::sync::Mutex<String>>,
+    updates: broadcast::Sender<String>,
+}
+
+impl JobLogger {
+    pub(crate) fn new(initial_log: String) -> Self {
+        let (updates, _) = broadcast::channel(LIVE_LOG_UPDATE_BUFFER_SIZE);
+        Self {
+            log: Arc::new(std::sync::Mutex::new(initial_log)),
+            updates,
+        }
+    }
+
+    pub(crate) fn write(&self, content: impl Into<String>) {
+        let content = content.into();
+        self.log.lock().unwrap().push_str(&content);
+        let _ = self.updates.send(content);
+    }
+
+    pub(crate) fn snapshot(&self) -> String {
+        self.log.lock().unwrap().clone()
+    }
+
+    pub(crate) fn subscribe(&self) -> broadcast::Receiver<String> {
+        self.updates.subscribe()
+    }
 }
 
 pub struct JobManager {
@@ -47,10 +78,9 @@ pub struct JobInfo {
 
 pub struct RunningJob {
     info: JobInfo,
-    log: Arc<std::sync::Mutex<String>>,
+    logger: JobLogger,
     timestamp_request: Arc<std::sync::Mutex<Option<Vec<u8>>>>,
     timestamp_response: Arc<std::sync::Mutex<Option<Vec<u8>>>>,
-    incoming: broadcast::Receiver<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -98,7 +128,7 @@ impl JobManager {
 
                 job.info.name.contains(search)
                     || job.info.disk.contains(search)
-                    || job.log.lock().unwrap().contains(search)
+                    || job.logger.snapshot().contains(search)
             })
             .map(|job| &job.info)
             .cloned()
@@ -204,10 +234,7 @@ impl JobManager {
             let lock = self.running_jobs.lock().unwrap();
 
             if let Some(job) = lock.get(id) {
-                let lock = job.log.lock().unwrap();
-
-                let subscriber = job.incoming.resubscribe();
-                return Ok(Some((lock.clone(), Some(subscriber))));
+                return Ok(Some((job.logger.snapshot(), Some(job.logger.subscribe()))));
             }
         }
 
@@ -288,9 +315,7 @@ impl JobManager {
 
         let drive_lock = self.lock_disk(device)?;
 
-        let (send, recv) = broadcast::channel(3);
-
-        let log = Arc::new(std::sync::Mutex::new(BANNER.to_string()));
+        let logger = JobLogger::new(BANNER.to_string());
         let timestamp_request = Arc::new(std::sync::Mutex::new(None));
         let timestamp_response = Arc::new(std::sync::Mutex::new(None));
 
@@ -300,8 +325,7 @@ impl JobManager {
                 disk: device.to_string(),
                 name: job.get_name(),
             },
-            incoming: recv,
-            log: log.clone(),
+            logger: logger.clone(),
             timestamp_request: timestamp_request.clone(),
             timestamp_response: timestamp_response.clone(),
         };
@@ -315,34 +339,20 @@ impl JobManager {
 
         task::spawn(async move {
             let _drive_lock = drive_lock;
-            let logger = send;
-            let mut log_receiver = logger.subscribe();
             let final_log_success_data = job.final_log_success_data();
 
-            let job_handle = tokio::spawn(async move { job.run(logger).await });
-
-            while let Ok(content) = log_receiver.recv().await {
-                log.lock().unwrap().push_str(&content);
-            }
+            let job_logger = logger.clone();
+            let job_handle = tokio::spawn(async move { job.run(job_logger).await });
 
             let result = job_handle.await;
             match result {
-                Err(err) => log
-                    .lock()
-                    .unwrap()
-                    .push_str(&format!("Job task failed: {err}\n")),
-                Ok(Err(err)) => log
-                    .lock()
-                    .unwrap()
-                    .push_str(&format!("Job failed: {err}\n")),
+                Err(err) => logger.write(format!("Job task failed: {err}\n")),
+                Ok(Err(err)) => logger.write(format!("Job failed: {err}\n")),
                 Ok(Ok(_)) => {
                     if let Some(final_log_success_data) = final_log_success_data {
-                        let extra = {
-                            let log = log.lock().unwrap();
-                            final_log_success_data(log.clone())
-                        };
+                        let extra = { final_log_success_data(logger.snapshot()) };
                         if let Some(extra) = extra.await {
-                            log.lock().unwrap().push_str(&extra.log);
+                            logger.write(extra.log);
                             *timestamp_request.lock().unwrap() = extra.timestamp_request;
                             *timestamp_response.lock().unwrap() = extra.timestamp_response;
                         }
@@ -355,7 +365,7 @@ impl JobManager {
                 running_jobs.remove(&id).unwrap()
             };
 
-            let log = rjob.log.lock().unwrap().clone();
+            let log = rjob.logger.snapshot();
             let timestamp_request = rjob.timestamp_request.lock().unwrap().clone();
             let timestamp_response = rjob.timestamp_response.lock().unwrap().clone();
 
@@ -408,6 +418,25 @@ pub trait Job: Send + Sync + 'static {
     }
     fn run(
         self,
-        logger: broadcast::Sender<String>,
+        logger: JobLogger,
     ) -> impl Future<Output = Result<(), Box<dyn std::error::Error + Send>>> + Send;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn job_log_is_complete_when_live_updates_lag() {
+        let logger = JobLogger::new(String::new());
+        let _live_view = logger.subscribe();
+
+        for index in 0..200 {
+            logger.write(format!("entry {index}\n"));
+        }
+
+        let log = logger.snapshot();
+        assert!(log.contains("entry 0\n"));
+        assert!(log.contains("entry 199\n"));
+    }
 }

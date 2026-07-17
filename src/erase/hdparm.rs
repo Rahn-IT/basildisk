@@ -1,9 +1,8 @@
 use std::string::FromUtf8Error;
 
-use thiserror::Error;
-use tokio::sync::broadcast;
-
 use super::command_runner::{self, CommandRunnerError};
+use crate::jobs::JobLogger;
+use thiserror::Error;
 
 pub struct Hdparm {
     pub frozen: bool,
@@ -107,7 +106,7 @@ impl Hdparm {
 
     pub async fn ata_secure_erase_disk(
         device: String,
-        logger: &broadcast::Sender<String>,
+        logger: &JobLogger,
         enhanced: bool,
     ) -> Result<(), AtaSecureEraseError> {
         // Set Device Password

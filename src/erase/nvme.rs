@@ -1,9 +1,10 @@
 use std::{string::FromUtf8Error, time::Duration};
 
 use thiserror::Error;
-use tokio::{process::Command, sync::broadcast, time::Instant};
+use tokio::{process::Command, time::Instant};
 
 use super::command_runner::{self, CommandRunnerError};
+use crate::jobs::JobLogger;
 
 pub struct Nvme {
     pub format_nvm: bool,
@@ -66,45 +67,41 @@ impl Nvme {
 
     pub async fn sanitize_crypto_erase_disk(
         device: String,
-        logger: &broadcast::Sender<String>,
+        logger: &JobLogger,
     ) -> Result<(), NvmeError> {
         sanitize_disk(device, logger, "0x04").await
     }
 
     pub async fn sanitize_block_erase_disk(
         device: String,
-        logger: &broadcast::Sender<String>,
+        logger: &JobLogger,
     ) -> Result<(), NvmeError> {
         sanitize_disk(device, logger, "0x02").await
     }
 
     pub async fn sanitize_overwrite_disk(
         device: String,
-        logger: &broadcast::Sender<String>,
+        logger: &JobLogger,
     ) -> Result<(), NvmeError> {
         sanitize_disk(device, logger, "0x03").await
     }
 
     pub async fn format_crypto_erase_disk(
         device: String,
-        logger: &broadcast::Sender<String>,
+        logger: &JobLogger,
     ) -> Result<(), NvmeError> {
         format_disk(device, logger, "2").await
     }
 
     pub async fn format_user_data_erase_disk(
         device: String,
-        logger: &broadcast::Sender<String>,
+        logger: &JobLogger,
     ) -> Result<(), NvmeError> {
         format_disk(device, logger, "1").await
     }
 }
 
-async fn sanitize_disk(
-    device: String,
-    logger: &broadcast::Sender<String>,
-    sanact: &str,
-) -> Result<(), NvmeError> {
+async fn sanitize_disk(device: String, logger: &JobLogger, sanact: &str) -> Result<(), NvmeError> {
     let controller = controller_for_device(&device);
     let mut command = Command::new("nvme");
     command
@@ -117,11 +114,7 @@ async fn sanitize_disk(
     poll_sanitize_log(&controller, logger).await
 }
 
-async fn format_disk(
-    device: String,
-    logger: &broadcast::Sender<String>,
-    ses: &str,
-) -> Result<(), NvmeError> {
+async fn format_disk(device: String, logger: &JobLogger, ses: &str) -> Result<(), NvmeError> {
     let mut command = Command::new("nvme");
     command
         .arg("format")
@@ -132,10 +125,7 @@ async fn format_disk(
     run_and_log(&mut command, logger).await.map(|_| ())
 }
 
-async fn poll_sanitize_log(
-    controller: &str,
-    logger: &broadcast::Sender<String>,
-) -> Result<(), NvmeError> {
+async fn poll_sanitize_log(controller: &str, logger: &JobLogger) -> Result<(), NvmeError> {
     let mut delay = Duration::from_secs(5);
     let max_delay = Duration::from_secs(60);
     let timeout = Duration::from_secs(6 * 60 * 60);
@@ -168,7 +158,7 @@ async fn poll_sanitize_log(
 
 async fn run_and_log(
     command: &mut Command,
-    logger: &broadcast::Sender<String>,
+    logger: &JobLogger,
 ) -> Result<command_runner::LoggedCommandOutput, NvmeError> {
     let output = command_runner::run_and_log(command, logger).await?;
     let status = output.status;
