@@ -8,7 +8,7 @@ use crate::{
     erase::{EraseType, GetEraseTypeError},
     lsblk::{LsBlk, LsBlkError},
     mount,
-    smartctl::{SmartCtl, SmartCtlError},
+    smartctl::SmartCtl,
 };
 
 #[derive(Serialize)]
@@ -101,8 +101,6 @@ pub enum ListDiskError {
     LsBlk(#[from] LsBlkError),
     #[error("join error: {0}")]
     Join(#[from] tokio::task::JoinError),
-    #[error("error during smartctl: {0}")]
-    SmartCtl(#[from] SmartCtlError),
     #[error("error while getting erase type: {0}")]
     EraseTypeError(#[from] GetEraseTypeError),
 }
@@ -123,131 +121,128 @@ impl Disk {
 
         while let Some(result) = joinset.join_next().await {
             let (smart_result, device) = result?;
-            let smart_data = smart_result?;
-
-            smartctl.insert(device, smart_data);
+            if let Ok(smart_data) = smart_result {
+                smartctl.insert(device, smart_data);
+            }
         }
 
         let mut disks = Vec::new();
 
         for lsblk_info in lsblk {
-            if let Some(smart) = smartctl.remove(&lsblk_info.name) {
-                let model_exact: Option<String> = smart.model_name;
-                let model_family: Option<String> = smart.model_family;
+            let smart = smartctl.remove(&lsblk_info.name);
+            let model_exact = smart.as_ref().and_then(|smart| smart.model_name.clone());
+            let model_family = smart.as_ref().and_then(|smart| smart.model_family.clone());
 
-                let mut model_display = model_family
-                    .unwrap_or_else(|| {
-                        model_exact.clone().unwrap_or_else(|| {
-                            lsblk_info
-                                .model
-                                .clone()
-                                .unwrap_or_else(|| "Unknown Disk Model".to_string())
-                        })
+            let mut model_display = model_family
+                .unwrap_or_else(|| {
+                    model_exact.clone().unwrap_or_else(|| {
+                        lsblk_info
+                            .model
+                            .clone()
+                            .unwrap_or_else(|| "Unknown Disk Model".to_string())
                     })
-                    .trim()
-                    .to_string();
+                })
+                .trim()
+                .to_string();
 
-                // Samsung just writes junk into the model family :(
-                if model_display.contains("based") {
-                    model_display = lsblk_info.model.clone().unwrap_or_default()
-                }
-
-                let connection_type = if let Some(tran) = &lsblk_info.tran {
-                    match tran.as_str() {
-                        "sata" => ConnectionType::Sata,
-                        "scsi" => ConnectionType::Scsi,
-                        "nvme" => ConnectionType::Nvme,
-                        "usb" => ConnectionType::Usb,
-                        _ => ConnectionType::Unknown,
-                    }
-                } else {
-                    ConnectionType::Unknown
-                };
-
-                let disk_type = if lsblk_info.rota {
-                    DiskType::Hdd
-                } else {
-                    DiskType::Ssd
-                };
-
-                let erase_type =
-                    EraseType::get_for_disk(&lsblk_info.name, connection_type, disk_type).await?;
-
-                let mount_points = lsblk_info.mount_points();
-                let partitions = lsblk_info
-                    .partitions()
-                    .into_iter()
-                    .map(|partition| {
-                        let supported = partition
-                            .fs_type
-                            .as_deref()
-                            .is_some_and(mount::is_supported_filesystem);
-                        let can_mount = supported && !partition.is_mounted;
-                        let can_unmount = partition.is_mounted
-                            && mount::mount_point_under_mnt(&partition.mount_points).is_some();
-                        let can_browse = partition.is_mounted
-                            && mount::mount_point_under_mnt(&partition.mount_points).is_some();
-                        let mount_disabled_reason = if supported {
-                            "Partition is already mounted.".to_string()
-                        } else {
-                            "Unsupported filesystem.".to_string()
-                        };
-                        let unmount_disabled_reason = if partition.is_mounted {
-                            "Partition is not mounted under /mnt.".to_string()
-                        } else {
-                            "Partition is not mounted.".to_string()
-                        };
-
-                        let browse_url = format!("/browse/{}", partition.name);
-
-                        Partition {
-                            name: partition.name,
-                            kind: partition.kind,
-                            fs_type: partition.fs_type,
-                            size_formated: Self::format_size(partition.size),
-                            has_usage: partition.fs_used.is_some(),
-                            usage_display: Self::format_usage(
-                                partition.fs_used,
-                                partition.fs_available,
-                            ),
-                            usage_percent: Self::usage_percent(
-                                partition.fs_use_percent.as_deref(),
-                                partition.fs_used,
-                                partition.fs_available,
-                            ),
-                            depth_class: format!("partition-depth-{}", partition.depth.min(4)),
-                            is_mounted: partition.is_mounted,
-                            mount_points: partition.mount_points,
-                            mount_points_display: partition.mount_points_display,
-                            can_mount,
-                            can_unmount,
-                            can_browse,
-                            browse_url,
-                            mount_disabled_reason,
-                            unmount_disabled_reason,
-                        }
-                    })
-                    .collect();
-                let disk = Disk {
-                    model: model_display,
-                    model_exact,
-                    serial: lsblk_info.serial,
-                    size_formated: Self::format_size(lsblk_info.size),
-                    device: lsblk_info.name,
-                    removable: lsblk_info.hotplug,
-                    is_mounted: !mount_points.is_empty(),
-                    mount_points_display: mount_points.join(", "),
-                    partitions,
-                    connection_type,
-                    disk_type,
-                    erase_type,
-                    erase_can_run: erase_type.can_run(),
-                };
-
-                disks.push(disk);
-            } else {
-                panic!("dammit");
+            // Samsung just writes junk into the model family :(
+            if model_display.contains("based") {
+                model_display = lsblk_info.model.clone().unwrap_or_default()
             }
+
+            let connection_type = if let Some(tran) = &lsblk_info.tran {
+                match tran.as_str() {
+                    "sata" => ConnectionType::Sata,
+                    "scsi" => ConnectionType::Scsi,
+                    "nvme" => ConnectionType::Nvme,
+                    "usb" => ConnectionType::Usb,
+                    _ => ConnectionType::Unknown,
+                }
+            } else {
+                ConnectionType::Unknown
+            };
+
+            let disk_type = if lsblk_info.rota {
+                DiskType::Hdd
+            } else {
+                DiskType::Ssd
+            };
+
+            let erase_type =
+                EraseType::get_for_disk(&lsblk_info.name, connection_type, disk_type).await?;
+
+            let mount_points = lsblk_info.mount_points();
+            let partitions = lsblk_info
+                .partitions()
+                .into_iter()
+                .map(|partition| {
+                    let supported = partition
+                        .fs_type
+                        .as_deref()
+                        .is_some_and(mount::is_supported_filesystem);
+                    let can_mount = supported && !partition.is_mounted;
+                    let can_unmount = partition.is_mounted
+                        && mount::mount_point_under_mnt(&partition.mount_points).is_some();
+                    let can_browse = partition.is_mounted
+                        && mount::mount_point_under_mnt(&partition.mount_points).is_some();
+                    let mount_disabled_reason = if supported {
+                        "Partition is already mounted.".to_string()
+                    } else {
+                        "Unsupported filesystem.".to_string()
+                    };
+                    let unmount_disabled_reason = if partition.is_mounted {
+                        "Partition is not mounted under /mnt.".to_string()
+                    } else {
+                        "Partition is not mounted.".to_string()
+                    };
+
+                    let browse_url = format!("/browse/{}", partition.name);
+
+                    Partition {
+                        name: partition.name,
+                        kind: partition.kind,
+                        fs_type: partition.fs_type,
+                        size_formated: Self::format_size(partition.size),
+                        has_usage: partition.fs_used.is_some(),
+                        usage_display: Self::format_usage(
+                            partition.fs_used,
+                            partition.fs_available,
+                        ),
+                        usage_percent: Self::usage_percent(
+                            partition.fs_use_percent.as_deref(),
+                            partition.fs_used,
+                            partition.fs_available,
+                        ),
+                        depth_class: format!("partition-depth-{}", partition.depth.min(4)),
+                        is_mounted: partition.is_mounted,
+                        mount_points: partition.mount_points,
+                        mount_points_display: partition.mount_points_display,
+                        can_mount,
+                        can_unmount,
+                        can_browse,
+                        browse_url,
+                        mount_disabled_reason,
+                        unmount_disabled_reason,
+                    }
+                })
+                .collect();
+            let disk = Disk {
+                model: model_display,
+                model_exact,
+                serial: lsblk_info.serial,
+                size_formated: Self::format_size(lsblk_info.size),
+                device: lsblk_info.name,
+                removable: lsblk_info.hotplug,
+                is_mounted: !mount_points.is_empty(),
+                mount_points_display: mount_points.join(", "),
+                partitions,
+                connection_type,
+                disk_type,
+                erase_type,
+                erase_can_run: erase_type.can_run(),
+            };
+
+            disks.push(disk);
         }
 
         Ok(disks)
