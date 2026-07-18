@@ -5,11 +5,12 @@
 {% block content %}
 <div class="browse-path">{{ path }}</div>
 
-{% if parent_url %}
-<div class="form-actions browse-up-actions">
+<div class="form-actions browse-page-actions">
+    {% if parent_url %}
     <a class="btn" href="{{ parent_url }}">Up</a>
+    {% endif %}
+    <a class="btn" href="{{ download_href }}">Download ZIP</a>
 </div>
-{% endif %}
 
 <div class="browse-list">
     {% for entry in entries %}
@@ -27,15 +28,11 @@
         {% endif %}
         <span class="browse-entry-size">{{ entry.size_display }}</span>
         <div class="browse-entry-actions">
-            {% if entry.is_downloadable %} {% if entry.is_dir %}
-            <a class="btn browse-action-btn" href="{{ entry.download_href }}"
-                >Download ZIP</a
-            >
-            {% else %}
+            {% if entry.is_downloadable and not entry.is_dir %}
             <a class="btn browse-action-btn" href="{{ entry.download_href }}"
                 >Download</a
             >
-            {% endif %} {% endif %}
+            {% endif %}
         </div>
     </div>
     {% else %}

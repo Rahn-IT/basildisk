@@ -32,6 +32,7 @@ pub struct BrowseView {
     pub is_admin: bool,
     pub device: String,
     pub path: String,
+    pub download_href: String,
     pub parent_url: Option<String>,
     pub entries: Vec<BrowseEntry>,
 }
@@ -221,6 +222,7 @@ pub async fn list(
         is_admin,
         device: device.to_string(),
         path: display_path(device, relative_path),
+        download_href: download_url(device, relative_path),
         parent_url: parent_url(device, relative_path),
         entries,
     })

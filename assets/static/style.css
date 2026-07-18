@@ -570,11 +570,11 @@ input[type="submit"].btn {
     gap: 0.55rem;
 }
 
-.browse-up-actions {
+.browse-page-actions {
     margin-bottom: 1.1rem;
 }
 
-.browse-up-actions .btn {
+.browse-page-actions .btn {
     padding-inline: 1.1rem;
 }
 
