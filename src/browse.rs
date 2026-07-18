@@ -64,6 +64,7 @@ pub enum DownloadKind {
 
 pub fn router() -> Router<AppState> {
     Router::new()
+        .route("/download/{device}", get(download_root))
         .route("/download/{device}/{*path}", get(download_path))
         .route("/browse/{device}", get(browse_root))
         .route("/browse/{device}/{*path}", get(browse_path))
@@ -102,7 +103,15 @@ async fn render_browse(
 async fn download_path(
     AxumPath((device, path)): AxumPath<(String, String)>,
 ) -> Result<Response, AppError> {
-    let download = download(&device, &path).await.map_err(|err| match err {
+    download_response(&device, &path).await
+}
+
+async fn download_root(AxumPath(device): AxumPath<String>) -> Result<Response, AppError> {
+    download_response(&device, "").await
+}
+
+async fn download_response(device: &str, path: &str) -> Result<Response, AppError> {
+    let download = download(device, path).await.map_err(|err| match err {
         BrowseError::EscapesRoot => {
             AppError::forbidden("Download path escapes the mounted directory.")
         }
