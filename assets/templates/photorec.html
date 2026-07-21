@@ -11,6 +11,17 @@
 </dl>
 
 <div class="form-stack">
+    <label for="recovery-name">What are you recovering?</label>
+    <input
+        id="recovery-name"
+        name="recovery_name"
+        type="text"
+        maxlength="120"
+        placeholder="e.g. Phone SD card"
+        autocomplete="off"
+    />
+    <p>Give this recovery a name to help identify it later.</p>
+
     <label for="recup-target">Recovery destination</label>
     {% if recovery_targets %}
     <select id="recup-target" name="recup_target" required>
