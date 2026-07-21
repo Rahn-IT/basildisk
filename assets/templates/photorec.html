@@ -10,7 +10,7 @@
     </div>
 </dl>
 
-<div class="form-stack">
+<form class="form-stack" method="post" action="/photorec/{{ source }}">
     <label for="recovery-name">What are you recovering?</label>
     <input
         id="recovery-name"
@@ -19,6 +19,7 @@
         maxlength="120"
         placeholder="e.g. Phone SD card"
         autocomplete="off"
+        required
     />
     <p>Give this recovery a name to help identify it later.</p>
 
@@ -37,5 +38,14 @@
         No mounted partitions under /mnt are available. Mount a partition from the home page before starting recovery.
     </div>
     {% endif %}
-</div>
+    <div class="form-actions">
+        <input
+            class="btn"
+            type="submit"
+            value="Start Photo Recovery"
+            {% if not recovery_targets %}disabled{% endif %}
+        />
+        <a class="btn" href="/">Cancel</a>
+    </div>
+</form>
 {% endblock %}

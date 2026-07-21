@@ -17,7 +17,7 @@ use crate::{
     timestamp,
 };
 
-mod command_runner;
+pub(crate) mod command_runner;
 pub mod hdparm;
 pub mod nvme;
 pub mod shred;
