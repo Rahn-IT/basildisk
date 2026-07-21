@@ -199,7 +199,7 @@ impl Job for PhotoRecJob {
 
     async fn run(self, logger: JobLogger) -> Result<(), Box<dyn std::error::Error + Send>> {
         logger.write(format!(
-            "\nStarting PhotoRec recovery\n=================================================\nSource: /dev/{}\nDestination: {}\n=================================================\n",
+            "\nStarting PhotoRec recovery\n=================================================\nSource: /dev/{}\nRecovery directory: {}\n=================================================\n",
             self.device, self.recovery_dir
         ));
 
@@ -211,24 +211,38 @@ impl Job for PhotoRecJob {
             self.recovery_target
         ));
 
-        let mut command = Command::new("photorec");
-        command
-            .arg("/log")
-            .arg("/d")
-            .arg(&self.recovery_dir)
-            .arg("/cmd")
-            .arg(Path::new("/dev").join(&self.device))
-            .arg("search");
-        let recovery_result = command_runner::run_and_log(&mut command, &logger)
-            .await
-            .map_err(|err| -> Box<dyn std::error::Error + Send> { Box::new(err) })
-            .and_then(|output| {
-                if output.status.success() {
-                    Ok(())
-                } else {
-                    Err(anyhow::anyhow!("PhotoRec exited with {}", output.status).into())
-                }
-            });
+        let recovery_root = Path::new(&self.recovery_dir);
+        let output_base = recovery_root.join("recup");
+        let photorec_log = recovery_root.join("photorec.log");
+        let recovery_result: Result<(), Box<dyn std::error::Error + Send>> = async {
+            tokio::fs::create_dir(recovery_root)
+                .await
+                .map_err(|err| -> Box<dyn std::error::Error + Send> { Box::new(err) })?;
+            logger.write(format!(
+                "Created recovery directory: {}\n",
+                recovery_root.display()
+            ));
+
+            let mut command = Command::new("photorec");
+            command
+                .arg("/logname")
+                .arg(&photorec_log)
+                .arg("/d")
+                .arg(&output_base)
+                .arg("/cmd")
+                .arg(Path::new("/dev").join(&self.device))
+                .arg("search");
+            let output = command_runner::run_and_log(&mut command, &logger)
+                .await
+                .map_err(|err| -> Box<dyn std::error::Error + Send> { Box::new(err) })?;
+
+            if output.status.success() {
+                Ok(())
+            } else {
+                Err(anyhow::anyhow!("PhotoRec exited with {}", output.status).into())
+            }
+        }
+        .await;
 
         logger.write(format!(
             "Remounting recovery destination read-only: {}\n",
