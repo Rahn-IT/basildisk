@@ -17,6 +17,7 @@ mod jobs;
 mod lsblk;
 mod mount;
 mod partition_routes;
+mod photorec;
 mod shutdown;
 mod smartctl;
 mod static_assets;
@@ -84,6 +85,7 @@ fn router() -> Router<AppState> {
         .merge(job_import::router())
         .merge(job_routes::router())
         .merge(partition_routes::router())
+        .merge(photorec::router())
         .merge(shutdown::router())
         .merge(static_assets::router())
         .merge(users::router())

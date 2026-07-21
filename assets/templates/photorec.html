@@ -1,0 +1,30 @@
+{% extends 'layout.html' %}
+
+{% block title %}PhotoRec{% endblock %}
+
+{% block content %}
+<dl class="metadata-grid">
+    <div>
+        <dt>Recovery source</dt>
+        <dd>/dev/{{ source }}</dd>
+    </div>
+</dl>
+
+<div class="form-stack">
+    <label for="recup-target">Recovery destination</label>
+    {% if recovery_targets %}
+    <select id="recup-target" name="recup_target" required>
+        {% for target in recovery_targets %}
+        <option value="{{ target.mount_point }}">
+            /dev/{{ target.device }} — {{ target.mount_point }}
+        </option>
+        {% endfor %}
+    </select>
+    <p>Select the mounted volume where recovered files will be saved.</p>
+    {% else %}
+    <div class="notice notice-error">
+        No mounted partitions under /mnt are available. Mount a partition from the home page before starting recovery.
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

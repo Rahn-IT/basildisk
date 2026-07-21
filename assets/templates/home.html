@@ -114,6 +114,15 @@ content %} {% if error_message %}
 
         <div class="form-actions">
             <a class="btn" href="/smart/{{ disk.device }}">SMART</a>
+            {% if disk.is_mounted %}
+            <span
+                class="btn btn-disabled"
+                title="Unmount this disk before using PhotoRec"
+                >PhotoRec</span
+            >
+            {% else %}
+            <a class="btn" href="/photorec/{{ disk.device }}">PhotoRec</a>
+            {% endif %}
             {% if disk.erase_type != "None" %} {% if disk.is_mounted %}
             <span
                 class="btn btn-disabled"
