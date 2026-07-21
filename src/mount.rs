@@ -8,6 +8,21 @@ use tokio::process::Command;
 
 const MOUNT_ROOT: &str = "/mnt";
 
+#[derive(Clone, Copy)]
+pub enum MountAccess {
+    Read,
+    ReadWrite,
+}
+
+impl MountAccess {
+    fn mount_option(self) -> &'static str {
+        match self {
+            Self::Read => "ro",
+            Self::ReadWrite => "rw",
+        }
+    }
+}
+
 #[derive(Debug, Error)]
 pub enum MountError {
     #[error("unsupported filesystem: {0}")]
@@ -61,13 +76,27 @@ pub async fn mount_partition(device: &str, fs_type: &str) -> Result<PathBuf, Mou
     run_command(
         Command::new("mount")
             .arg("-o")
-            .arg("ro")
+            .arg(MountAccess::Read.mount_option())
             .arg(device_path)
             .arg(&mount_point),
     )
     .await?;
 
     Ok(mount_point)
+}
+
+pub async fn remount_partition(mount_point: &str, access: MountAccess) -> Result<(), MountError> {
+    if !is_under_mnt(mount_point) {
+        return Err(MountError::NotMountedUnderMnt);
+    }
+
+    run_command(
+        Command::new("mount")
+            .arg("-o")
+            .arg(format!("remount,{}", access.mount_option()))
+            .arg(mount_point),
+    )
+    .await
 }
 
 pub async fn unmount_partition(mount_points: &[String]) -> Result<(), MountError> {
@@ -103,4 +132,15 @@ async fn run_command(command: &mut Command) -> Result<(), MountError> {
         code: output.status.code().unwrap_or(-1),
         stderr,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::MountAccess;
+
+    #[test]
+    fn maps_mount_access_to_linux_mount_options() {
+        assert_eq!(MountAccess::Read.mount_option(), "ro");
+        assert_eq!(MountAccess::ReadWrite.mount_option(), "rw");
+    }
 }

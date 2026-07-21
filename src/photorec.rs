@@ -8,6 +8,7 @@ use axum::{
 };
 use axum_extra::extract::Form;
 use serde::{Deserialize, Serialize};
+use time::OffsetDateTime;
 use tokio::process::Command;
 
 use crate::{
@@ -16,7 +17,7 @@ use crate::{
     erase::command_runner,
     error::AppError,
     jobs::{Job, JobLogger},
-    mount,
+    mount::{self, MountAccess},
     users::CurrentUser,
 };
 
@@ -42,6 +43,7 @@ struct StartPhotoRecForm {
 struct PhotoRecJob {
     device: String,
     recovery_name: String,
+    recovery_target: String,
     recovery_dir: String,
 }
 
@@ -55,18 +57,16 @@ async fn photorec_get(
     AxumPath(device): AxumPath<String>,
 ) -> Result<Html<String>, AppError> {
     let disks = Disk::list().await?;
-    let source_exists = disks.iter().any(|disk| {
-        disk.device == device
-            || disk
-                .partitions
-                .iter()
-                .any(|partition| partition.name == device)
-    });
-
-    if !source_exists {
+    let source_mounted = source_is_mounted(&disks, &device);
+    let Some(source_mounted) = source_mounted else {
         return Err(AppError::not_found_for(
             "Device or partition",
             format!("No device or partition exists for {device}"),
+        ));
+    };
+    if source_mounted {
+        return Err(AppError::conflict(
+            "Unmount the recovery source before starting PhotoRec.",
         ));
     }
 
@@ -102,18 +102,16 @@ async fn photorec_post(
     Form(form): Form<StartPhotoRecForm>,
 ) -> Result<Redirect, AppError> {
     let disks = Disk::list().await?;
-    let source_exists = disks.iter().any(|disk| {
-        disk.device == device
-            || disk
-                .partitions
-                .iter()
-                .any(|partition| partition.name == device)
-    });
-
-    if !source_exists {
+    let source_mounted = source_is_mounted(&disks, &device);
+    let Some(source_mounted) = source_mounted else {
         return Err(AppError::not_found_for(
             "Device or partition",
             format!("No device or partition exists for {device}"),
+        ));
+    };
+    if source_mounted {
+        return Err(AppError::conflict(
+            "Unmount the recovery source before starting PhotoRec.",
         ));
     }
 
@@ -137,12 +135,13 @@ async fn photorec_post(
         ));
     }
 
-    let recovery_dir = Path::new(&form.recup_target).join(&recovery_name);
-    tokio::fs::create_dir_all(&recovery_dir).await?;
+    let recovery_dir_name = recovery_directory_name(&recovery_name, OffsetDateTime::now_utc());
+    let recovery_dir = Path::new(&form.recup_target).join(recovery_dir_name);
 
     let job = PhotoRecJob {
         device,
         recovery_name,
+        recovery_target: form.recup_target,
         recovery_dir: recovery_dir.to_string_lossy().into_owned(),
     };
     let id = state
@@ -164,6 +163,31 @@ fn sanitize_recovery_name(name: &str) -> String {
         .to_string()
 }
 
+fn source_is_mounted(disks: &[Disk], device: &str) -> Option<bool> {
+    disks.iter().find_map(|disk| {
+        if disk.device == device {
+            Some(disk.is_mounted)
+        } else {
+            disk.partitions
+                .iter()
+                .find(|partition| partition.name == device)
+                .map(|partition| partition.is_mounted)
+        }
+    })
+}
+
+fn recovery_directory_name(recovery_name: &str, now: OffsetDateTime) -> String {
+    format!(
+        "{:04}{:02}{:02}-{:02}{:02}{:02}-{recovery_name}",
+        now.year(),
+        u8::from(now.month()),
+        now.day(),
+        now.hour(),
+        now.minute(),
+        now.second(),
+    )
+}
+
 impl Job for PhotoRecJob {
     fn get_device(&self) -> &str {
         &self.device
@@ -179,6 +203,14 @@ impl Job for PhotoRecJob {
             self.device, self.recovery_dir
         ));
 
+        mount::remount_partition(&self.recovery_target, MountAccess::ReadWrite)
+            .await
+            .map_err(|err| -> Box<dyn std::error::Error + Send> { Box::new(err) })?;
+        logger.write(format!(
+            "Recovery destination remounted read-write: {}\n",
+            self.recovery_target
+        ));
+
         let mut command = Command::new("photorec");
         command
             .arg("/log")
@@ -187,14 +219,34 @@ impl Job for PhotoRecJob {
             .arg("/cmd")
             .arg(Path::new("/dev").join(&self.device))
             .arg("search");
-        let output = command_runner::run_and_log(&mut command, &logger)
+        let recovery_result = command_runner::run_and_log(&mut command, &logger)
             .await
-            .map_err(|err| -> Box<dyn std::error::Error + Send> { Box::new(err) })?;
+            .map_err(|err| -> Box<dyn std::error::Error + Send> { Box::new(err) })
+            .and_then(|output| {
+                if output.status.success() {
+                    Ok(())
+                } else {
+                    Err(anyhow::anyhow!("PhotoRec exited with {}", output.status).into())
+                }
+            });
 
-        if !output.status.success() {
-            return Err(anyhow::anyhow!("PhotoRec exited with {}", output.status).into());
+        logger.write(format!(
+            "Remounting recovery destination read-only: {}\n",
+            self.recovery_target
+        ));
+        let remount_result =
+            mount::remount_partition(&self.recovery_target, MountAccess::Read).await;
+
+        if let Err(err) = remount_result {
+            logger.write(format!(
+                "Could not remount recovery destination read-only: {err}\n"
+            ));
+            if recovery_result.is_ok() {
+                return Err(Box::new(err));
+            }
         }
 
+        recovery_result?;
         logger.write("\n=================================================\nPhotoRec recovery completed successfully.\n=================================================\n");
         Ok(())
     }
@@ -202,7 +254,9 @@ impl Job for PhotoRecJob {
 
 #[cfg(test)]
 mod tests {
-    use super::sanitize_recovery_name;
+    use time::OffsetDateTime;
+
+    use super::{recovery_directory_name, sanitize_recovery_name};
 
     #[test]
     fn sanitizes_recovery_folder_name() {
@@ -211,5 +265,16 @@ mod tests {
             "Phone SD-card  2026"
         );
         assert_eq!(sanitize_recovery_name("..."), "");
+    }
+
+    #[test]
+    fn prefixes_recovery_folder_name_with_datetime() {
+        assert_eq!(
+            recovery_directory_name(
+                "Phone SD-card",
+                OffsetDateTime::from_unix_timestamp(0).unwrap()
+            ),
+            "19700101-000000-Phone SD-card"
+        );
     }
 }
