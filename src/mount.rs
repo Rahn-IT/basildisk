@@ -85,18 +85,39 @@ pub async fn mount_partition(device: &str, fs_type: &str) -> Result<PathBuf, Mou
     Ok(mount_point)
 }
 
-pub async fn remount_partition(mount_point: &str, access: MountAccess) -> Result<(), MountError> {
+pub async fn remount_partition(
+    device: &str,
+    mount_point: &str,
+    access: MountAccess,
+) -> Result<(), MountError> {
+    validate_device_name(device)?;
     if !is_under_mnt(mount_point) {
         return Err(MountError::NotMountedUnderMnt);
     }
 
-    run_command(
+    run_command(Command::new("umount").arg(mount_point)).await?;
+
+    let mount_result = run_command(
         Command::new("mount")
             .arg("-o")
-            .arg(format!("remount,{}", access.mount_option()))
+            .arg(access.mount_option())
+            .arg(Path::new("/dev").join(device))
             .arg(mount_point),
     )
-    .await
+    .await;
+
+    if mount_result.is_err() && matches!(access, MountAccess::ReadWrite) {
+        let _ = run_command(
+            Command::new("mount")
+                .arg("-o")
+                .arg(MountAccess::Read.mount_option())
+                .arg(Path::new("/dev").join(device))
+                .arg(mount_point),
+        )
+        .await;
+    }
+
+    mount_result
 }
 
 pub async fn unmount_partition(mount_points: &[String]) -> Result<(), MountError> {

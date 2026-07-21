@@ -43,6 +43,7 @@ struct StartPhotoRecForm {
 struct PhotoRecJob {
     device: String,
     recovery_name: String,
+    recovery_target_device: String,
     recovery_target: String,
     recovery_dir: String,
 }
@@ -122,18 +123,18 @@ async fn photorec_post(
         ));
     }
 
-    let target_is_mounted = disks
-        .iter()
-        .flat_map(|disk| &disk.partitions)
-        .any(|partition| {
-            mount::mount_point_under_mnt(&partition.mount_points).as_deref()
-                == Some(form.recup_target.as_str())
-        });
-    if !target_is_mounted {
+    let recovery_target_device = disks.iter().find_map(|disk| {
+        disk.partitions.iter().find_map(|partition| {
+            (mount::mount_point_under_mnt(&partition.mount_points).as_deref()
+                == Some(form.recup_target.as_str()))
+            .then(|| partition.name.clone())
+        })
+    });
+    let Some(recovery_target_device) = recovery_target_device else {
         return Err(AppError::conflict(
             "The selected recovery destination is no longer mounted under /mnt.",
         ));
-    }
+    };
 
     let recovery_dir_name = recovery_directory_name(&recovery_name, OffsetDateTime::now_utc());
     let recovery_dir = Path::new(&form.recup_target).join(recovery_dir_name);
@@ -141,6 +142,7 @@ async fn photorec_post(
     let job = PhotoRecJob {
         device,
         recovery_name,
+        recovery_target_device,
         recovery_target: form.recup_target,
         recovery_dir: recovery_dir.to_string_lossy().into_owned(),
     };
@@ -203,9 +205,13 @@ impl Job for PhotoRecJob {
             self.device, self.recovery_dir
         ));
 
-        mount::remount_partition(&self.recovery_target, MountAccess::ReadWrite)
-            .await
-            .map_err(|err| -> Box<dyn std::error::Error + Send> { Box::new(err) })?;
+        mount::remount_partition(
+            &self.recovery_target_device,
+            &self.recovery_target,
+            MountAccess::ReadWrite,
+        )
+        .await
+        .map_err(|err| -> Box<dyn std::error::Error + Send> { Box::new(err) })?;
         logger.write(format!(
             "Recovery destination remounted read-write: {}\n",
             self.recovery_target
@@ -248,8 +254,12 @@ impl Job for PhotoRecJob {
             "Remounting recovery destination read-only: {}\n",
             self.recovery_target
         ));
-        let remount_result =
-            mount::remount_partition(&self.recovery_target, MountAccess::Read).await;
+        let remount_result = mount::remount_partition(
+            &self.recovery_target_device,
+            &self.recovery_target,
+            MountAccess::Read,
+        )
+        .await;
 
         if let Err(err) = remount_result {
             logger.write(format!(
